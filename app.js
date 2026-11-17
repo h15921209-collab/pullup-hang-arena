@@ -19,6 +19,7 @@ const LS_KEYS = {
   PLAYER_NAME: "iron_bar_player_name",
   CLIENT_ID: "iron_bar_client_id",
   SOUND: "iron_bar_sound_on",
+  BGM: "iron_bar_bgm_on",
   CLOUD_OVERRIDE: "iron_bar_cloud_override"
 };
 
@@ -32,6 +33,10 @@ const state = {
   activeTab: "pb", // pb | history
   gripFilter: "all",
   soundEnabled: localStorage.getItem(LS_KEYS.SOUND) !== "false",
+  bgmEnabled: localStorage.getItem(LS_KEYS.BGM) !== "false",
+  bgmPlaying: false,
+  bgmTimerId: null,
+  bgmStep: 0,
   clientId: getOrCreateClientId(),
   supabase: null,
   realtimeChannel: null,
@@ -47,6 +52,9 @@ const state = {
 const el = {
   syncStatusBtn: document.getElementById("sync-status-btn"),
   syncStatusText: document.getElementById("sync-status-text"),
+  bgmToggleBtn: document.getElementById("bgm-toggle-btn"),
+  bgmIcon: document.getElementById("bgm-icon"),
+  bgmLabel: document.getElementById("bgm-label"),
   soundToggleBtn: document.getElementById("sound-toggle-btn"),
   soundIcon: document.getElementById("sound-icon"),
   soundLabel: document.getElementById("sound-label"),
@@ -149,11 +157,13 @@ function formatDateShort(iso) {
 }
 
 // ============================================================
-// Web Audio API 街機音效引擎（免外部音檔）
+// Web Audio API 街機音效 ＋ 138 BPM 熱血沸騰 BGM 引擎
 // ============================================================
 let audioCtx = null;
-function ensureAudio() {
-  if (!state.soundEnabled) return null;
+let noiseBuffer = null;
+
+function ensureAudio(force = false) {
+  if (!force && !state.soundEnabled && !state.bgmEnabled) return null;
   if (!audioCtx) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (Ctx) audioCtx = new Ctx();
@@ -161,10 +171,17 @@ function ensureAudio() {
   if (audioCtx && audioCtx.state === "suspended") {
     audioCtx.resume().catch(() => {});
   }
+  if (audioCtx && !noiseBuffer) {
+    const sr = audioCtx.sampleRate;
+    noiseBuffer = audioCtx.createBuffer(1, sr * 0.25, sr);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
   return audioCtx;
 }
 
 function playTone(freq, duration, type = "sine", gainVal = 0.14, delay = 0) {
+  if (!state.soundEnabled) return;
   const ctx = ensureAudio();
   if (!ctx) return;
   const start = ctx.currentTime + delay;
@@ -204,6 +221,164 @@ function playFinish(isNewPB) {
     playTone(523.25, 0.15, "sine", 0.15, 0);
     playTone(659.25, 0.24, "sine", 0.16, 0.12);
   }
+}
+
+// 138 BPM 熱血節拍合成器 (E 小調進行：E - C - G - D)
+const BGM_BASS_BARS = [82.41, 65.41, 98.0, 73.42]; // E2, C2, G2, D2
+const BGM_LEAD_PATTERN = [
+  329.63, 0, 392.0, 493.88, 0, 440.0, 392.0, 329.63,
+  261.63, 0, 329.63, 392.0, 0, 493.88, 440.0, 392.0
+];
+
+function bgmKick(ctx, t) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(145, t);
+  osc.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+  gain.gain.setValueAtTime(0.32, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.15);
+}
+
+function bgmSnare(ctx, t) {
+  if (!noiseBuffer) return;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(1100, t);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.16, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  src.start(t);
+  src.stop(t + 0.13);
+}
+
+function bgmHat(ctx, t, accent = false) {
+  if (!noiseBuffer) return;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(6500, t);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(accent ? 0.08 : 0.04, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  src.start(t);
+  src.stop(t + 0.05);
+}
+
+function bgmBass(ctx, t, freq) {
+  const osc = ctx.createOscillator();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(freq, t);
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(520, t);
+  filter.frequency.exponentialRampToValueAtTime(160, t + 0.09);
+  gain.gain.setValueAtTime(0.12, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.11);
+}
+
+function bgmLead(ctx, t, freq, octaveMult = 1) {
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc1.type = "sawtooth";
+  osc2.type = "square";
+  osc1.frequency.setValueAtTime(freq * octaveMult, t);
+  osc2.frequency.setValueAtTime(freq * octaveMult * 1.004, t);
+  gain.gain.setValueAtTime(0.055, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ctx.destination);
+  osc1.start(t);
+  osc2.start(t);
+  osc1.stop(t + 0.15);
+  osc2.stop(t + 0.15);
+}
+
+function stepBgm() {
+  if (!state.bgmPlaying || !state.bgmEnabled) return;
+  const ctx = ensureAudio(true);
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.015;
+  const step = state.bgmStep % 64;
+  const stepInBar = step % 16;
+  const barIdx = Math.floor(step / 16);
+  const bassRoot = BGM_BASS_BARS[barIdx];
+  const isIntense = state.phase === "hanging";
+  const isOverdrive =
+    state.lastTierCls === "tier-overdrive" ||
+    state.lastTierCls === "tier-godlike" ||
+    state.lastTierCls === "tier-immortal";
+
+  // 強勁四四拍大鼓
+  if (stepInBar % 4 === 0 || (barIdx === 3 && stepInBar === 14)) {
+    bgmKick(ctx, t);
+  }
+  // 反拍軍鼓
+  if (stepInBar === 4 || stepInBar === 12) {
+    bgmSnare(ctx, t);
+  }
+  // 踩鈸（懸吊進入高潮時加密成 16 分音符）
+  if (isIntense || stepInBar % 2 === 0) {
+    bgmHat(ctx, t, stepInBar % 4 === 2);
+  }
+  // 滾動電音貝斯（八度跳動）
+  const bassFreq = stepInBar % 2 === 1 ? bassRoot * 2 : bassRoot;
+  bgmBass(ctx, t, bassFreq);
+
+  // 熱血主旋律（懸吊中或高階時升八度燃燒）
+  const leadFreq = BGM_LEAD_PATTERN[stepInBar];
+  if (leadFreq > 0 && (isIntense || state.phase === "idle")) {
+    bgmLead(ctx, t, leadFreq, isOverdrive ? 2 : 1);
+  }
+  state.bgmStep += 1;
+}
+
+function startBgm() {
+  if (!state.bgmEnabled || state.bgmPlaying) return;
+  ensureAudio(true);
+  state.bgmPlaying = true;
+  state.bgmStep = 0;
+  // 138 BPM 16分音符約 108.7ms
+  state.bgmTimerId = setInterval(stepBgm, 109);
+  updateBgmUI();
+}
+
+function stopBgm() {
+  state.bgmPlaying = false;
+  if (state.bgmTimerId) {
+    clearInterval(state.bgmTimerId);
+    state.bgmTimerId = null;
+  }
+  updateBgmUI();
+}
+
+function updateBgmUI() {
+  const on = state.bgmEnabled;
+  el.bgmToggleBtn.classList.toggle("bgm-on", on && state.bgmPlaying);
+  el.bgmToggleBtn.setAttribute("aria-pressed", String(on));
+  el.bgmIcon.textContent = on ? (state.bgmPlaying ? "🔥" : "🎵") : "🔇";
+  el.bgmLabel.textContent = on ? (state.bgmPlaying ? "熱血燃燒中" : "熱血音樂開") : "音樂關閉";
 }
 
 // ============================================================
@@ -745,6 +920,9 @@ function startChallenge() {
   }
   localStorage.setItem(LS_KEYS.PLAYER_NAME, name);
   ensureAudio();
+  if (state.bgmEnabled && !state.bgmPlaying) {
+    startBgm();
+  }
   requestWakeLock();
 
   const countdownSec = Number(el.countdownSelect.value) || 0;
@@ -855,6 +1033,20 @@ el.mainActionBtn.addEventListener("click", () => {
   if (state.phase === "idle") startChallenge();
   else if (state.phase === "countdown") cancelCountdown();
   else if (state.phase === "hanging") stopAndSaveHang();
+});
+
+el.bgmToggleBtn.addEventListener("click", () => {
+  if (!state.bgmEnabled) {
+    state.bgmEnabled = true;
+    localStorage.setItem(LS_KEYS.BGM, "true");
+    startBgm();
+  } else if (!state.bgmPlaying) {
+    startBgm();
+  } else {
+    state.bgmEnabled = false;
+    localStorage.setItem(LS_KEYS.BGM, "false");
+    stopBgm();
+  }
 });
 
 el.soundToggleBtn.addEventListener("click", () => {
@@ -992,5 +1184,6 @@ el.cloudResetBtn.addEventListener("click", async () => {
     el.soundLabel.textContent = "靜音中";
     el.soundToggleBtn.setAttribute("aria-pressed", "false");
   }
+  updateBgmUI();
   initBackend();
 })();

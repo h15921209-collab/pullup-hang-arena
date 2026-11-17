@@ -28,6 +28,10 @@
           <span class="status-dot"></span>
           <span id="sync-status-text">本地展示模式</span>
         </button>
+        <button id="bgm-toggle-btn" class="hud-pill bgm-on" type="button" aria-pressed="true">
+          <span id="bgm-icon">🎵</span>
+          <span id="bgm-label">熱血音樂開</span>
+        </button>
         <button id="sound-toggle-btn" class="hud-pill" type="button" aria-pressed="true">
           <span id="sound-icon">🔊</span>
           <span id="sound-label">音效開啟</span>
@@ -47,123 +51,27 @@
           <div id="wake-badge" class="wake-badge" hidden>⚡ 螢幕恆亮中</div>
         </div>
 
-        <!-- 炫酷吊單槓動畫舞台 -->
+        <!-- 炫酷真人吊單槓動畫舞台 -->
         <div id="bar-stage" class="bar-stage state-idle">
-          <!-- 背景聚光燈與速度線 -->
+          <!-- 背景聚光燈、能量光環與速度線 -->
           <div class="spotlight spotlight-left"></div>
           <div class="spotlight spotlight-right"></div>
+          <div class="real-aura" aria-hidden="true"></div>
           <div class="speed-lines" aria-hidden="true"></div>
 
-          <!-- 動態單槓與選手 SVG -->
-          <svg id="pullup-svg" class="pullup-svg" viewBox="0 0 420 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="單槓懸吊選手動畫">
-            <defs>
-              <linearGradient id="barMetal" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#1e293b"/>
-                <stop offset="25%" stop-color="#94a3b8"/>
-                <stop offset="50%" stop-color="#f8fafc"/>
-                <stop offset="75%" stop-color="#94a3b8"/>
-                <stop offset="100%" stop-color="#1e293b"/>
-              </linearGradient>
-              <linearGradient id="neonCyan" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#00f5ff"/>
-                <stop offset="100%" stop-color="#3b82f6"/>
-              </linearGradient>
-              <linearGradient id="athleteSuit" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#1e293b"/>
-                <stop offset="100%" stop-color="#0f172a"/>
-              </linearGradient>
-              <filter id="neonGlow" x="-40%" y="-40%" width="180%" height="180%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-              <filter id="strongGlow" x="-60%" y="-60%" width="220%" height="220%">
-                <feGaussianBlur stdDeviation="7" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
+          <!-- 頂部發光單槓與電流特效 -->
+          <div class="real-bar-overlay" aria-hidden="true">
+            <div class="real-bar-steel"></div>
+            <div class="real-bar-core"></div>
+            <div class="real-spark spark-left"></div>
+            <div class="real-spark spark-right"></div>
+          </div>
 
-            <!-- 龍門架支撐柱 -->
-            <g class="rig-frame">
-              <rect x="34" y="14" width="14" height="240" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2"/>
-              <rect x="372" y="14" width="14" height="240" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2"/>
-              <!-- 支撐柱霓虹裝飾條 -->
-              <line x1="41" y1="24" x2="41" y2="244" class="rig-neon" stroke="#00f5ff" stroke-width="2" opacity="0.5"/>
-              <line x1="379" y1="24" x2="379" y2="244" class="rig-neon" stroke="#00f5ff" stroke-width="2" opacity="0.5"/>
-              <!-- 地板能量線 -->
-              <line x1="16" y1="250" x2="404" y2="250" stroke="#334155" stroke-width="2"/>
-              <ellipse cx="210" cy="250" rx="95" ry="6" class="floor-glow" fill="#00f5ff" opacity="0.16"/>
-            </g>
-
-            <!-- 主單槓橫桿 -->
-            <g class="pullup-bar-group">
-              <rect x="26" y="42" width="368" height="10" rx="5" fill="url(#barMetal)"/>
-              <line x1="36" y1="47" x2="384" y2="47" class="bar-energy-core" stroke="#00f5ff" stroke-width="3" filter="url(#neonGlow)"/>
-              <!-- 握把止滑紋路 -->
-              <rect x="148" y="40" width="24" height="14" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
-              <rect x="248" y="40" width="24" height="14" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
-              <!-- 能量電弧（懸吊時閃爍） -->
-              <path class="bar-arc arc-left" d="M 130 47 Q 145 35 160 47 T 190 47" fill="none" stroke="#00f5ff" stroke-width="2" filter="url(#neonGlow)"/>
-              <path class="bar-arc arc-right" d="M 230 47 Q 245 59 260 47 T 290 47" fill="none" stroke="#ff007f" stroke-width="2" filter="url(#neonGlow)"/>
-            </g>
-
-            <!-- 選手全身群組（隨狀態切換姿勢與晃動） -->
-            <g id="athlete-rig" class="athlete-rig">
-              <!-- 氣場光環 -->
-              <ellipse cx="210" cy="145" rx="48" ry="86" class="athlete-aura" fill="#00f5ff" opacity="0"/>
-
-              <!-- 左手臂 & 右手臂 -->
-              <g class="arms-group">
-                <path id="arm-left" class="limb arm-left" d="M 160 48 L 183 108" stroke="#e2e8f0" stroke-width="13" stroke-linecap="round"/>
-                <path id="arm-right" class="limb arm-right" d="M 260 48 L 237 108" stroke="#e2e8f0" stroke-width="13" stroke-linecap="round"/>
-                <!-- 手臂霓虹護腕/線條 -->
-                <path class="arm-neon-left" d="M 160 48 L 183 108" stroke="#00f5ff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-                <path class="arm-neon-right" d="M 260 48 L 237 108" stroke="#00f5ff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-              </g>
-
-              <!-- 手掌抓槓 -->
-              <g class="hands-group">
-                <rect x="151" y="39" width="18" height="15" rx="5" fill="#f8fafc" stroke="#00f5ff" stroke-width="2" class="hand-glow"/>
-                <rect x="251" y="39" width="18" height="15" rx="5" fill="#f8fafc" stroke="#00f5ff" stroke-width="2" class="hand-glow"/>
-                <!-- 摩擦火花 -->
-                <circle cx="160" cy="46" r="6" class="grip-spark spark-l" fill="#fbbf24" opacity="0" filter="url(#strongGlow)"/>
-                <circle cx="260" cy="46" r="6" class="grip-spark spark-r" fill="#fbbf24" opacity="0" filter="url(#strongGlow)"/>
-              </g>
-
-              <!-- 身體下半部擺動群組（軀幹 + 頭 + 腿） -->
-              <g class="body-swing">
-                <!-- 雙腿 -->
-                <g class="legs-group">
-                  <path id="leg-left" d="M 196 164 L 188 214 L 194 242" fill="none" stroke="url(#athleteSuit)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path id="leg-right" d="M 224 164 L 232 214 L 226 242" fill="none" stroke="url(#athleteSuit)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-                  <!-- 運動鞋霓虹邊 -->
-                  <ellipse cx="194" cy="244" rx="10" ry="5" fill="#00f5ff" class="shoe-glow"/>
-                  <ellipse cx="226" cy="244" rx="10" ry="5" fill="#00f5ff" class="shoe-glow"/>
-                </g>
-
-                <!-- 倒三角健美軀幹 -->
-                <path d="M 176 105 L 244 105 L 229 166 L 191 166 Z" fill="url(#athleteSuit)" stroke="#38bdf8" stroke-width="2" class="torso-outline"/>
-                <!-- 胸口核心反應爐 -->
-                <polygon points="210,118 220,130 210,142 200,130" fill="#00f5ff" class="core-crystal" filter="url(#neonGlow)"/>
-
-                <!-- 頭部 & 頭帶 & 護目鏡 -->
-                <g class="head-group">
-                  <circle cx="210" cy="84" r="18" fill="#f1f5f9"/>
-                  <!-- 電競頭帶 -->
-                  <rect x="192" y="74" width="36" height="7" rx="3" fill="#ff007f" class="headband"/>
-                  <!-- 頭帶飄帶 -->
-                  <path d="M 228 77 Q 244 72 252 80" fill="none" stroke="#ff007f" stroke-width="4" stroke-linecap="round" class="headband-tail"/>
-                  <!-- 霓虹護目鏡 -->
-                  <rect x="197" y="81" width="26" height="8" rx="4" fill="#0f172a" stroke="#00f5ff" stroke-width="1.8" class="visor"/>
-                </g>
-              </g>
-            </g>
-          </svg>
+          <!-- 真人選手照片動畫容器 -->
+          <div id="real-athlete-wrap" class="real-athlete-wrap">
+            <img id="real-athlete-img" class="real-athlete-img" src="athlete-hang.jpg" alt="真人單槓懸吊選手" />
+            <div class="real-rim-overlay" aria-hidden="true"></div>
+          </div>
 
           <!-- 倒數準備浮層 -->
           <div id="countdown-overlay" class="countdown-overlay" hidden>

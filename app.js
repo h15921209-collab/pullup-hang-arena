@@ -1,0 +1,996 @@
+import "./config.js";
+
+const GRIP_LABELS = {
+  overhand: "正手 Overhand",
+  underhand: "反手 Underhand",
+  mixed: "混合 Mixed"
+};
+
+const TIERS = [
+  { minMs: 90000, cls: "tier-immortal", label: "IMMORTAL · 非人類領域 (90s+)" },
+  { minMs: 60000, cls: "tier-godlike", label: "GODLIKE · 單槓戰神 (60s+)" },
+  { minMs: 30000, cls: "tier-overdrive", label: "OVERDRIVE · 極限燃燒 (30s+)" },
+  { minMs: 15000, cls: "tier-ignition", label: "IGNITION · 能量點燃 (15s+)" },
+  { minMs: 0, cls: "tier-warmup", label: "WARMUP · 鎖定抓槓中" }
+];
+
+const LS_KEYS = {
+  RECORDS: "iron_bar_records_v1",
+  PLAYER_NAME: "iron_bar_player_name",
+  CLIENT_ID: "iron_bar_client_id",
+  SOUND: "iron_bar_sound_on",
+  CLOUD_OVERRIDE: "iron_bar_cloud_override"
+};
+
+// ============================================================
+// 狀態管理
+// ============================================================
+const state = {
+  records: [],
+  phase: "idle", // idle | countdown | hanging
+  grip: "overhand",
+  activeTab: "pb", // pb | history
+  gripFilter: "all",
+  soundEnabled: localStorage.getItem(LS_KEYS.SOUND) !== "false",
+  clientId: getOrCreateClientId(),
+  supabase: null,
+  realtimeChannel: null,
+  isCloud: false,
+  countdownTimerId: null,
+  rafId: null,
+  hangStartPerf: 0,
+  lastTierCls: "tier-idle",
+  wakeLock: null
+};
+
+// DOM 快取
+const el = {
+  syncStatusBtn: document.getElementById("sync-status-btn"),
+  syncStatusText: document.getElementById("sync-status-text"),
+  soundToggleBtn: document.getElementById("sound-toggle-btn"),
+  soundIcon: document.getElementById("sound-icon"),
+  soundLabel: document.getElementById("sound-label"),
+
+  barStage: document.getElementById("bar-stage"),
+  tierName: document.getElementById("tier-name"),
+  wakeBadge: document.getElementById("wake-badge"),
+  countdownOverlay: document.getElementById("countdown-overlay"),
+  countdownNumber: document.getElementById("countdown-number"),
+  timerDisplay: document.getElementById("timer-display"),
+  overtakeText: document.getElementById("overtake-text"),
+  overtakeFill: document.getElementById("overtake-fill"),
+
+  playerNameInput: document.getElementById("player-name-input"),
+  countdownSelect: document.getElementById("countdown-select"),
+  quickPlayersWrap: document.getElementById("quick-players-wrap"),
+  quickPlayers: document.getElementById("quick-players"),
+  gripPills: document.querySelectorAll(".grip-pill"),
+  mainActionBtn: document.getElementById("main-action-btn"),
+  mainActionText: document.getElementById("main-action-text"),
+  manualOpenBtn: document.getElementById("manual-open-btn"),
+
+  boardStats: document.getElementById("board-stats"),
+  refreshBtn: document.getElementById("refresh-btn"),
+  podiumGrid: document.getElementById("podium-grid"),
+  tabPb: document.getElementById("tab-pb"),
+  tabHistory: document.getElementById("tab-history"),
+  filterPills: document.querySelectorAll(".filter-pill"),
+  leaderboardList: document.getElementById("leaderboard-list"),
+
+  resultModal: document.getElementById("result-modal"),
+  resultBadge: document.getElementById("result-badge"),
+  resultTitle: document.getElementById("result-title"),
+  resultTime: document.getElementById("result-time"),
+  resultMeta: document.getElementById("result-meta"),
+  resultRankBanner: document.getElementById("result-rank-banner"),
+  resultRetryBtn: document.getElementById("result-retry-btn"),
+  resultCloseBtn: document.getElementById("result-close-btn"),
+
+  manualModal: document.getElementById("manual-modal"),
+  manualForm: document.getElementById("manual-form"),
+  manualPlayer: document.getElementById("manual-player"),
+  manualMin: document.getElementById("manual-min"),
+  manualSec: document.getElementById("manual-sec"),
+  manualGrip: document.getElementById("manual-grip"),
+  manualCloseX: document.getElementById("manual-close-x"),
+  manualCancelBtn: document.getElementById("manual-cancel-btn"),
+
+  cloudModal: document.getElementById("cloud-modal"),
+  cloudCloseX: document.getElementById("cloud-close-x"),
+  cloudCurrentState: document.getElementById("cloud-current-state"),
+  cloudForm: document.getElementById("cloud-form"),
+  cloudUrlInput: document.getElementById("cloud-url-input"),
+  cloudKeyInput: document.getElementById("cloud-key-input"),
+  cloudResetBtn: document.getElementById("cloud-reset-btn")
+};
+
+// ============================================================
+// 工具函式
+// ============================================================
+function getOrCreateClientId() {
+  let id = localStorage.getItem(LS_KEYS.CLIENT_ID);
+  if (!id) {
+    id = "c_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    localStorage.setItem(LS_KEYS.CLIENT_ID, id);
+  }
+  return id;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatDuration(ms) {
+  const safe = Math.max(0, Math.floor(ms));
+  const totalSec = Math.floor(safe / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  const centis = Math.floor((safe % 1000) / 10);
+  return {
+    main: `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`,
+    ms: `.${String(centis).padStart(2, "0")}`,
+    full: `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(centis).padStart(2, "0")}`
+  };
+}
+
+function formatDateShort(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${m}/${day} ${hh}:${mm}`;
+}
+
+// ============================================================
+// Web Audio API 街機音效引擎（免外部音檔）
+// ============================================================
+let audioCtx = null;
+function ensureAudio() {
+  if (!state.soundEnabled) return null;
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) audioCtx = new Ctx();
+  }
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+function playTone(freq, duration, type = "sine", gainVal = 0.14, delay = 0) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const start = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  gain.gain.setValueAtTime(gainVal, start);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + duration);
+}
+
+function playTick() {
+  playTone(660, 0.12, "triangle", 0.16);
+}
+
+function playGo() {
+  playTone(880, 0.12, "sawtooth", 0.15, 0);
+  playTone(1318.5, 0.28, "triangle", 0.2, 0.08);
+}
+
+function playTierUp() {
+  playTone(587.33, 0.1, "triangle", 0.12, 0);
+  playTone(880, 0.18, "triangle", 0.15, 0.09);
+}
+
+function playFinish(isNewPB) {
+  if (isNewPB) {
+    playTone(523.25, 0.14, "triangle", 0.18, 0);
+    playTone(659.25, 0.14, "triangle", 0.18, 0.1);
+    playTone(783.99, 0.14, "triangle", 0.18, 0.2);
+    playTone(1046.5, 0.35, "sawtooth", 0.16, 0.3);
+  } else {
+    playTone(523.25, 0.15, "sine", 0.15, 0);
+    playTone(659.25, 0.24, "sine", 0.16, 0.12);
+  }
+}
+
+// ============================================================
+// 背景動態粒子 & 勝利煙火特效畫布
+// ============================================================
+const bgCanvas = document.getElementById("bg-particles");
+const bgCtx = bgCanvas.getContext("2d");
+const fxCanvas = document.getElementById("fx-canvas");
+const fxCtx = fxCanvas.getContext("2d");
+
+let bgDots = [];
+let confettiPieces = [];
+
+function resizeCanvases() {
+  bgCanvas.width = window.innerWidth;
+  bgCanvas.height = window.innerHeight;
+  fxCanvas.width = window.innerWidth;
+  fxCanvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvases);
+resizeCanvases();
+
+function initBgParticles() {
+  const count = Math.min(55, Math.floor(window.innerWidth / 24));
+  bgDots = Array.from({ length: count }, () => ({
+    x: Math.random() * bgCanvas.width,
+    y: Math.random() * bgCanvas.height,
+    r: Math.random() * 2.2 + 0.8,
+    vy: -(Math.random() * 0.6 + 0.25),
+    alpha: Math.random() * 0.55 + 0.15,
+    hue: Math.random() > 0.5 ? "0, 245, 255" : "255, 0, 127"
+  }));
+}
+initBgParticles();
+
+function spawnConfetti(count = 90) {
+  const colors = ["#00f5ff", "#ff007f", "#fbbf24", "#39ff14", "#c084fc", "#ffffff"];
+  const originX = fxCanvas.width / 2;
+  const originY = fxCanvas.height * 0.42;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 9 + 3;
+    confettiPieces.push({
+      x: originX,
+      y: originY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 3.5,
+      size: Math.random() * 7 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1,
+      rot: Math.random() * Math.PI,
+      vRot: (Math.random() - 0.5) * 0.22
+    });
+  }
+}
+
+function animateCanvases() {
+  bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+  const speedMultiplier = state.phase === "hanging" ? 3.2 : 1;
+  for (const d of bgDots) {
+    d.y += d.vy * speedMultiplier;
+    if (d.y < -10) {
+      d.y = bgCanvas.height + 10;
+      d.x = Math.random() * bgCanvas.width;
+    }
+    bgCtx.beginPath();
+    bgCtx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    bgCtx.fillStyle = `rgba(${d.hue}, ${d.alpha})`;
+    bgCtx.fill();
+  }
+
+  if (confettiPieces.length > 0) {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    confettiPieces = confettiPieces.filter((p) => p.life > 0.02);
+    for (const p of confettiPieces) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.22;
+      p.rot += p.vRot;
+      p.life -= 0.014;
+      fxCtx.save();
+      fxCtx.translate(p.x, p.y);
+      fxCtx.rotate(p.rot);
+      fxCtx.globalAlpha = p.life;
+      fxCtx.fillStyle = p.color;
+      fxCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      fxCtx.restore();
+    }
+  } else {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+  }
+  requestAnimationFrame(animateCanvases);
+}
+requestAnimationFrame(animateCanvases);
+
+// ============================================================
+// Supabase / 本地資料存取層
+// ============================================================
+function getEffectiveCloudConfig() {
+  try {
+    const override = JSON.parse(localStorage.getItem(LS_KEYS.CLOUD_OVERRIDE) || "null");
+    if (override && override.url && override.key) {
+      return { url: override.url.trim(), key: override.key.trim() };
+    }
+  } catch {}
+  const cfg = window.ARENA_CONFIG || {};
+  if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) {
+    return { url: cfg.SUPABASE_URL.trim(), key: cfg.SUPABASE_ANON_KEY.trim() };
+  }
+  return null;
+}
+
+function getDemoRecords() {
+  const now = Date.now();
+  return [
+    {
+      id: "demo-1",
+      player_name: "鋼鐵阿豪",
+      duration_ms: 82450,
+      grip_type: "overhand",
+      client_id: "demo",
+      is_manual: false,
+      created_at: new Date(now - 3600000 * 6).toISOString()
+    },
+    {
+      id: "demo-2",
+      player_name: "霓虹小雪",
+      duration_ms: 64120,
+      grip_type: "underhand",
+      client_id: "demo",
+      is_manual: false,
+      created_at: new Date(now - 3600000 * 4).toISOString()
+    },
+    {
+      id: "demo-3",
+      player_name: "閃電凱文",
+      duration_ms: 48900,
+      grip_type: "mixed",
+      client_id: "demo",
+      is_manual: false,
+      created_at: new Date(now - 3600000 * 2).toISOString()
+    }
+  ];
+}
+
+function loadLocalRecords() {
+  try {
+    const raw = localStorage.getItem(LS_KEYS.RECORDS);
+    if (!raw) {
+      const seed = getDemoRecords();
+      localStorage.setItem(LS_KEYS.RECORDS, JSON.stringify(seed));
+      return seed;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return getDemoRecords();
+  }
+}
+
+function saveLocalRecords(list) {
+  localStorage.setItem(LS_KEYS.RECORDS, JSON.stringify(list));
+}
+
+async function initBackend() {
+  const cloud = getEffectiveCloudConfig();
+  if (state.realtimeChannel && state.supabase) {
+    try {
+      await state.supabase.removeChannel(state.realtimeChannel);
+    } catch {}
+    state.realtimeChannel = null;
+  }
+
+  if (!cloud) {
+    state.supabase = null;
+    state.isCloud = false;
+    updateSyncStatusUI(false);
+    state.records = loadLocalRecords();
+    renderAll();
+    return;
+  }
+
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    state.supabase = createClient(cloud.url, cloud.key);
+    state.isCloud = true;
+    updateSyncStatusUI(true);
+    await fetchRecords();
+
+    state.realtimeChannel = state.supabase
+      .channel("hang-records-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "hang_records" },
+        () => {
+          fetchRecords();
+        }
+      )
+      .subscribe();
+  } catch (err) {
+    console.error("Supabase 連線失敗，退回本地模式:", err);
+    state.supabase = null;
+    state.isCloud = false;
+    updateSyncStatusUI(false, "雲端連線失敗，已切換本地");
+    state.records = loadLocalRecords();
+    renderAll();
+  }
+}
+
+function updateSyncStatusUI(isCloud, customText = "") {
+  el.syncStatusBtn.classList.toggle("status-cloud", isCloud);
+  el.syncStatusBtn.classList.toggle("status-local", !isCloud);
+  el.syncStatusText.textContent = customText || (isCloud ? "雲端即時連線中" : "本地展示模式");
+  el.cloudCurrentState.textContent = isCloud
+    ? "✅ 目前已連線至 Supabase 雲端資料庫，所有裝置即時同步中！"
+    : "⚠️ 目前為「本地展示模式」，成績僅儲存在此裝置瀏覽器。設定 Supabase 後即可跨裝置即時排行！";
+}
+
+async function fetchRecords() {
+  if (state.isCloud && state.supabase) {
+    const { data, error } = await state.supabase
+      .from("hang_records")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.error("讀取 Supabase 失敗:", error);
+      return;
+    }
+    state.records = data || [];
+  } else {
+    state.records = loadLocalRecords();
+  }
+  renderAll();
+}
+
+async function insertRecord(payload) {
+  if (state.isCloud && state.supabase) {
+    const { data, error } = await state.supabase
+      .from("hang_records")
+      .insert([payload])
+      .select()
+      .single();
+    if (error) throw error;
+    state.records.unshift(data);
+    renderAll();
+    return data;
+  } else {
+    const item = {
+      id: "loc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      ...payload,
+      created_at: new Date().toISOString()
+    };
+    state.records.unshift(item);
+    saveLocalRecords(state.records);
+    renderAll();
+    return item;
+  }
+}
+
+async function deleteRecord(id) {
+  if (state.isCloud && state.supabase) {
+    const { error } = await state.supabase.from("hang_records").delete().eq("id", id);
+    if (error) {
+      alert("刪除失敗：" + error.message);
+      return;
+    }
+    state.records = state.records.filter((r) => r.id !== id);
+  } else {
+    state.records = state.records.filter((r) => r.id !== id);
+    saveLocalRecords(state.records);
+  }
+  renderAll();
+}
+
+// ============================================================
+// 排行榜計算與渲染
+// ============================================================
+function getFilteredRecords() {
+  if (state.gripFilter === "all") return state.records;
+  return state.records.filter((r) => r.grip_type === state.gripFilter);
+}
+
+function buildPBLeaderboard(recordsList) {
+  const bestByPlayer = new Map();
+  for (const r of recordsList) {
+    const key = r.player_name.trim().toLowerCase();
+    const existing = bestByPlayer.get(key);
+    if (!existing) {
+      bestByPlayer.set(key, { ...r, attempts: 1 });
+    } else {
+      existing.attempts += 1;
+      if (r.duration_ms > existing.duration_ms) {
+        bestByPlayer.set(key, { ...r, attempts: existing.attempts });
+      }
+    }
+  }
+  return Array.from(bestByPlayer.values()).sort((a, b) => b.duration_ms - a.duration_ms);
+}
+
+function renderAll() {
+  renderQuickPlayers();
+  renderPodium();
+  renderLeaderboardList();
+}
+
+function renderQuickPlayers() {
+  const names = [];
+  const seen = new Set();
+  for (const r of state.records) {
+    const n = r.player_name.trim();
+    const k = n.toLowerCase();
+    if (!seen.has(k) && r.client_id !== "demo") {
+      seen.add(k);
+      names.push(n);
+    }
+  }
+  if (names.length === 0) {
+    for (const r of state.records) {
+      const n = r.player_name.trim();
+      const k = n.toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        names.push(n);
+      }
+    }
+  }
+
+  if (names.length === 0) {
+    el.quickPlayersWrap.hidden = true;
+    return;
+  }
+  el.quickPlayersWrap.hidden = false;
+  const current = el.playerNameInput.value.trim().toLowerCase();
+  el.quickPlayers.innerHTML = names
+    .slice(0, 10)
+    .map(
+      (n) =>
+        `<button type="button" class="quick-chip ${n.toLowerCase() === current ? "active" : ""}" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+    )
+    .join("");
+}
+
+function renderPodium() {
+  const pbList = buildPBLeaderboard(getFilteredRecords());
+  const totalCount = getFilteredRecords().length;
+  el.boardStats.textContent = `共 ${pbList.length} 位選手 · ${totalCount} 筆挑戰紀錄`;
+
+  if (pbList.length === 0) {
+    el.podiumGrid.innerHTML = "";
+    return;
+  }
+
+  const medals = ["👑", "🥈", "🥉"];
+  const top3 = [0, 1, 2].map((idx) => {
+    const item = pbList[idx];
+    if (!item) {
+      return `
+        <div class="podium-card rank-${idx + 1}">
+          <div class="podium-medal">${medals[idx]}</div>
+          <div class="podium-name">虛位以待</div>
+          <div class="podium-time">--:--.--</div>
+          <div class="podium-grip">等待挑戰者</div>
+        </div>`;
+    }
+    return `
+      <div class="podium-card rank-${idx + 1}">
+        <div class="podium-medal">${medals[idx]}</div>
+        <div class="podium-name">${escapeHtml(item.player_name)}</div>
+        <div class="podium-time">${formatDuration(item.duration_ms).full}</div>
+        <div class="podium-grip">${GRIP_LABELS[item.grip_type] || item.grip_type}</div>
+      </div>`;
+  });
+
+  el.podiumGrid.innerHTML = top3.join("");
+}
+
+function renderLeaderboardList() {
+  const filtered = getFilteredRecords();
+  const currentPlayer = el.playerNameInput.value.trim().toLowerCase();
+
+  if (filtered.length === 0) {
+    el.leaderboardList.innerHTML = `<div class="empty-state">目前還沒有符合條件的紀錄，快上槓搶下頭香！</div>`;
+    return;
+  }
+
+  if (state.activeTab === "pb") {
+    const pbList = buildPBLeaderboard(filtered);
+    el.leaderboardList.innerHTML = pbList
+      .map((item, i) => {
+        const rank = i + 1;
+        const topCls = rank <= 3 ? `top-${rank}` : "";
+        const isMe = currentPlayer && item.player_name.trim().toLowerCase() === currentPlayer;
+        return `
+          <div class="rank-row ${isMe ? "is-me" : ""}">
+            <div class="rank-left">
+              <div class="rank-num ${topCls}">#${rank}</div>
+              <div class="rank-info">
+                <div class="rank-name">${escapeHtml(item.player_name)}</div>
+                <div class="rank-meta">
+                  <span>${GRIP_LABELS[item.grip_type] || item.grip_type}</span>
+                  <span>挑戰 ${item.attempts} 次</span>
+                  <span>${formatDateShort(item.created_at)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="rank-right">
+              <div class="rank-score">${formatDuration(item.duration_ms).full}</div>
+            </div>
+          </div>`;
+      })
+      .join("");
+  } else {
+    const sorted = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    el.leaderboardList.innerHTML = sorted
+      .map((item, i) => {
+        const canDelete = !state.isCloud || item.client_id === state.clientId;
+        const isMe = item.client_id === state.clientId;
+        return `
+          <div class="rank-row ${isMe ? "is-me" : ""}">
+            <div class="rank-left">
+              <div class="rank-num">${i + 1}</div>
+              <div class="rank-info">
+                <div class="rank-name">${escapeHtml(item.player_name)}${item.is_manual ? " ✍️" : ""}</div>
+                <div class="rank-meta">
+                  <span>${GRIP_LABELS[item.grip_type] || item.grip_type}</span>
+                  <span>${formatDateShort(item.created_at)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="rank-right">
+              <div class="rank-score">${formatDuration(item.duration_ms).full}</div>
+              ${canDelete ? `<button class="del-btn" data-del-id="${escapeHtml(item.id)}" type="button">刪除</button>` : ""}
+            </div>
+          </div>`;
+      })
+      .join("");
+  }
+}
+
+// ============================================================
+// 計時器、Wake Lock 與即時超車進度
+// ============================================================
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    state.wakeLock = await navigator.wakeLock.request("screen");
+    el.wakeBadge.hidden = false;
+  } catch {}
+}
+
+async function releaseWakeLock() {
+  if (state.wakeLock) {
+    try {
+      await state.wakeLock.release();
+    } catch {}
+    state.wakeLock = null;
+  }
+  el.wakeBadge.hidden = true;
+}
+
+function setStageState(phase) {
+  state.phase = phase;
+  el.barStage.classList.remove("state-idle", "state-countdown", "state-hanging");
+  el.barStage.classList.add(`state-${phase}`);
+
+  el.mainActionBtn.classList.remove("btn-start", "btn-stop", "btn-cancel");
+  if (phase === "idle") {
+    el.mainActionBtn.classList.add("btn-start");
+    el.mainActionText.textContent = "開始挑戰";
+    el.mainActionBtn.querySelector(".btn-icon").textContent = "⚡";
+    el.countdownOverlay.hidden = true;
+    applyTier(0, true);
+  } else if (phase === "countdown") {
+    el.mainActionBtn.classList.add("btn-cancel");
+    el.mainActionText.textContent = "取消倒數";
+    el.mainActionBtn.querySelector(".btn-icon").textContent = "✕";
+    el.countdownOverlay.hidden = false;
+  } else if (phase === "hanging") {
+    el.mainActionBtn.classList.add("btn-stop");
+    el.mainActionText.textContent = "落地停止 (STOP)";
+    el.mainActionBtn.querySelector(".btn-icon").textContent = "🛑";
+    el.countdownOverlay.hidden = true;
+  }
+}
+
+function applyTier(elapsedMs, isIdle = false) {
+  if (isIdle) {
+    document.body.className = "tier-idle";
+    state.lastTierCls = "tier-idle";
+    el.tierName.textContent = "READY TO HANG";
+    return;
+  }
+  const tier = TIERS.find((t) => elapsedMs >= t.minMs) || TIERS[TIERS.length - 1];
+  if (tier.cls !== state.lastTierCls) {
+    if (state.lastTierCls !== "tier-idle" && state.lastTierCls !== "tier-warmup") {
+      playTierUp();
+    }
+    document.body.className = tier.cls;
+    state.lastTierCls = tier.cls;
+    el.tierName.textContent = tier.label;
+  }
+}
+
+function updateOvertakeBar(elapsedMs) {
+  const pbList = buildPBLeaderboard(state.records);
+  if (pbList.length === 0) {
+    el.overtakeText.textContent = "你是首位挑戰者，全力撐住寫下第一筆紀錄！";
+    el.overtakeFill.style.width = "100%";
+    return;
+  }
+  // 找出目前還沒超越的最低門檻選手（由後往前）
+  let target = null;
+  let targetRank = pbList.length;
+  for (let i = pbList.length - 1; i >= 0; i--) {
+    if (pbList[i].duration_ms > elapsedMs) {
+      target = pbList[i];
+      targetRank = i + 1;
+      break;
+    }
+  }
+  if (!target) {
+    el.overtakeText.textContent = "👑 已超越全場所有選手！創造全新傳奇紀錄中！";
+    el.overtakeFill.style.width = "100%";
+  } else {
+    const diffSec = ((target.duration_ms - elapsedMs) / 1000).toFixed(1);
+    const pct = Math.min(100, Math.max(3, (elapsedMs / target.duration_ms) * 100));
+    el.overtakeText.textContent = `目標超越 #${targetRank} ${target.player_name} (${formatDuration(target.duration_ms).full}) · 還差 ${diffSec}s`;
+    el.overtakeFill.style.width = `${pct}%`;
+  }
+}
+
+function startChallenge() {
+  const name = el.playerNameInput.value.trim();
+  if (!name) {
+    el.playerNameInput.focus();
+    el.overtakeText.textContent = "⚠️ 請先輸入你的選手暱稱再開始！";
+    return;
+  }
+  localStorage.setItem(LS_KEYS.PLAYER_NAME, name);
+  ensureAudio();
+  requestWakeLock();
+
+  const countdownSec = Number(el.countdownSelect.value) || 0;
+  if (countdownSec <= 0) {
+    beginHangTimer();
+    return;
+  }
+
+  setStageState("countdown");
+  let left = countdownSec;
+  el.countdownNumber.textContent = left;
+  playTick();
+
+  state.countdownTimerId = setInterval(() => {
+    left -= 1;
+    if (left > 0) {
+      el.countdownNumber.textContent = left;
+      playTick();
+    } else {
+      clearInterval(state.countdownTimerId);
+      state.countdownTimerId = null;
+      beginHangTimer();
+    }
+  }, 1000);
+}
+
+function cancelCountdown() {
+  if (state.countdownTimerId) {
+    clearInterval(state.countdownTimerId);
+    state.countdownTimerId = null;
+  }
+  releaseWakeLock();
+  setStageState("idle");
+}
+
+function beginHangTimer() {
+  playGo();
+  setStageState("hanging");
+  state.hangStartPerf = performance.now();
+
+  const loop = () => {
+    if (state.phase !== "hanging") return;
+    const elapsed = performance.now() - state.hangStartPerf;
+    const fmt = formatDuration(elapsed);
+    el.timerDisplay.innerHTML = `${fmt.main}<span class="ms">${fmt.ms}</span>`;
+    applyTier(elapsed, false);
+    updateOvertakeBar(elapsed);
+    state.rafId = requestAnimationFrame(loop);
+  };
+  state.rafId = requestAnimationFrame(loop);
+}
+
+async function stopAndSaveHang() {
+  if (state.phase !== "hanging") return;
+  const elapsedMs = Math.max(100, Math.round(performance.now() - state.hangStartPerf));
+  if (state.rafId) {
+    cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+  }
+  releaseWakeLock();
+  setStageState("idle");
+
+  const playerName = el.playerNameInput.value.trim() || "無名挑戰者";
+  await saveAndCelebrate(playerName, elapsedMs, state.grip, false);
+}
+
+async function saveAndCelebrate(playerName, durationMs, gripType, isManual) {
+  const prevPB = state.records
+    .filter((r) => r.player_name.trim().toLowerCase() === playerName.trim().toLowerCase())
+    .reduce((max, r) => Math.max(max, r.duration_ms), 0);
+
+  const isNewPB = durationMs > prevPB;
+
+  try {
+    await insertRecord({
+      player_name: playerName.trim(),
+      duration_ms: durationMs,
+      grip_type: gripType,
+      client_id: state.clientId,
+      is_manual: isManual
+    });
+  } catch (err) {
+    alert("儲存成績至雲端失敗：" + (err.message || err));
+    return;
+  }
+
+  const pbList = buildPBLeaderboard(state.records);
+  const rankIdx = pbList.findIndex(
+    (r) => r.player_name.trim().toLowerCase() === playerName.trim().toLowerCase()
+  );
+
+  playFinish(isNewPB);
+  spawnConfetti(isNewPB ? 120 : 55);
+
+  el.resultBadge.textContent = isNewPB ? "🔥 NEW PERSONAL BEST!" : "CHALLENGE COMPLETE";
+  el.resultTitle.textContent = isNewPB ? "個人紀錄突破！" : "挑戰完成！";
+  el.resultTime.textContent = formatDuration(durationMs).full;
+  el.resultMeta.textContent = `${playerName} · ${GRIP_LABELS[gripType] || gripType}`;
+  el.resultRankBanner.textContent =
+    rankIdx >= 0 ? `🏆 目前總排名第 ${rankIdx + 1} 名！` : "已記錄至挑戰歷史！";
+  el.resultModal.hidden = false;
+}
+
+// ============================================================
+// 事件綁定
+// ============================================================
+el.mainActionBtn.addEventListener("click", () => {
+  if (state.phase === "idle") startChallenge();
+  else if (state.phase === "countdown") cancelCountdown();
+  else if (state.phase === "hanging") stopAndSaveHang();
+});
+
+el.soundToggleBtn.addEventListener("click", () => {
+  state.soundEnabled = !state.soundEnabled;
+  localStorage.setItem(LS_KEYS.SOUND, String(state.soundEnabled));
+  el.soundIcon.textContent = state.soundEnabled ? "🔊" : "🔇";
+  el.soundLabel.textContent = state.soundEnabled ? "音效開啟" : "靜音中";
+  el.soundToggleBtn.setAttribute("aria-pressed", String(state.soundEnabled));
+});
+
+el.gripPills.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    el.gripPills.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.grip = btn.dataset.grip;
+  });
+});
+
+el.quickPlayers.addEventListener("click", (e) => {
+  const chip = e.target.closest(".quick-chip");
+  if (!chip) return;
+  el.playerNameInput.value = chip.dataset.name;
+  localStorage.setItem(LS_KEYS.PLAYER_NAME, chip.dataset.name);
+  renderQuickPlayers();
+  renderLeaderboardList();
+});
+
+el.playerNameInput.addEventListener("input", () => {
+  renderQuickPlayers();
+  renderLeaderboardList();
+});
+
+el.tabPb.addEventListener("click", () => {
+  state.activeTab = "pb";
+  el.tabPb.classList.add("active");
+  el.tabHistory.classList.remove("active");
+  renderLeaderboardList();
+});
+
+el.tabHistory.addEventListener("click", () => {
+  state.activeTab = "history";
+  el.tabHistory.classList.add("active");
+  el.tabPb.classList.remove("active");
+  renderLeaderboardList();
+});
+
+el.filterPills.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    el.filterPills.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.gripFilter = btn.dataset.filter;
+    renderPodium();
+    renderLeaderboardList();
+  });
+});
+
+el.leaderboardList.addEventListener("click", async (e) => {
+  const delBtn = e.target.closest("[data-del-id]");
+  if (!delBtn) return;
+  const id = delBtn.dataset.delId;
+  if (confirm("確定要刪除這筆紀錄嗎？")) {
+    await deleteRecord(id);
+  }
+});
+
+el.refreshBtn.addEventListener("click", () => {
+  fetchRecords();
+});
+
+// 完賽彈窗
+el.resultCloseBtn.addEventListener("click", () => {
+  el.resultModal.hidden = true;
+});
+el.resultRetryBtn.addEventListener("click", () => {
+  el.resultModal.hidden = true;
+  startChallenge();
+});
+
+// 手動補登彈窗
+el.manualOpenBtn.addEventListener("click", () => {
+  el.manualPlayer.value = el.playerNameInput.value.trim();
+  el.manualGrip.value = state.grip;
+  el.manualModal.hidden = false;
+});
+el.manualCloseX.addEventListener("click", () => (el.manualModal.hidden = true));
+el.manualCancelBtn.addEventListener("click", () => (el.manualModal.hidden = true));
+el.manualForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = el.manualPlayer.value.trim();
+  const mins = Math.max(0, Number(el.manualMin.value) || 0);
+  const secs = Math.max(0, Number(el.manualSec.value) || 0);
+  const totalMs = Math.round((mins * 60 + secs) * 1000);
+  if (!name || totalMs <= 0) {
+    alert("請輸入正確的選手名稱與大於 0 的時間！");
+    return;
+  }
+  el.manualModal.hidden = true;
+  el.playerNameInput.value = name;
+  localStorage.setItem(LS_KEYS.PLAYER_NAME, name);
+  await saveAndCelebrate(name, totalMs, el.manualGrip.value, true);
+});
+
+// 雲端設定彈窗
+el.syncStatusBtn.addEventListener("click", () => {
+  const cloud = getEffectiveCloudConfig();
+  el.cloudUrlInput.value = cloud ? cloud.url : "";
+  el.cloudKeyInput.value = cloud ? cloud.key : "";
+  el.cloudModal.hidden = false;
+});
+el.cloudCloseX.addEventListener("click", () => (el.cloudModal.hidden = true));
+el.cloudForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const url = el.cloudUrlInput.value.trim();
+  const key = el.cloudKeyInput.value.trim();
+  if (!url || !key) {
+    alert("請同時填入 Supabase Project URL 與 Anon Key");
+    return;
+  }
+  localStorage.setItem(LS_KEYS.CLOUD_OVERRIDE, JSON.stringify({ url, key }));
+  el.cloudModal.hidden = true;
+  await initBackend();
+});
+el.cloudResetBtn.addEventListener("click", async () => {
+  localStorage.removeItem(LS_KEYS.CLOUD_OVERRIDE);
+  el.cloudModal.hidden = true;
+  await initBackend();
+});
+
+// 初始化啟動
+(function bootstrap() {
+  const savedName = localStorage.getItem(LS_KEYS.PLAYER_NAME);
+  if (savedName) el.playerNameInput.value = savedName;
+  if (!state.soundEnabled) {
+    el.soundIcon.textContent = "🔇";
+    el.soundLabel.textContent = "靜音中";
+    el.soundToggleBtn.setAttribute("aria-pressed", "false");
+  }
+  initBackend();
+})();

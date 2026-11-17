@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>IRON BAR ARENA｜單槓持久度極限競賽</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="tier-idle">
+  <!-- 背景動態粒子與勝利特效畫布 -->
+  <canvas id="bg-particles" aria-hidden="true"></canvas>
+  <canvas id="fx-canvas" aria-hidden="true"></canvas>
+
+  <div class="app-shell">
+    <!-- 頂部電競 HUD 導覽列 -->
+    <header class="hud-header">
+      <div class="brand">
+        <div class="brand-badge">ARCADE EDITION</div>
+        <h1 class="brand-title">IRON BAR <span>ARENA</span></h1>
+        <p class="brand-sub">單槓持久度極限競賽排行榜</p>
+      </div>
+
+      <div class="hud-actions">
+        <button id="sync-status-btn" class="hud-pill status-local" type="button" title="查看雲端同步設定">
+          <span class="status-dot"></span>
+          <span id="sync-status-text">本地展示模式</span>
+        </button>
+        <button id="sound-toggle-btn" class="hud-pill" type="button" aria-pressed="true">
+          <span id="sound-icon">🔊</span>
+          <span id="sound-label">音效開啟</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="arena-grid">
+      <!-- 左側／主舞台：吊單槓動畫 + 數位計時器 + 操控面板 -->
+      <section class="arena-card stage-card">
+        <!-- 能量等級與即時超車進度條 -->
+        <div class="stage-top-bar">
+          <div id="tier-badge" class="tier-badge">
+            <span class="tier-dot"></span>
+            <span id="tier-name">READY TO HANG</span>
+          </div>
+          <div id="wake-badge" class="wake-badge" hidden>⚡ 螢幕恆亮中</div>
+        </div>
+
+        <!-- 炫酷吊單槓動畫舞台 -->
+        <div id="bar-stage" class="bar-stage state-idle">
+          <!-- 背景聚光燈與速度線 -->
+          <div class="spotlight spotlight-left"></div>
+          <div class="spotlight spotlight-right"></div>
+          <div class="speed-lines" aria-hidden="true"></div>
+
+          <!-- 動態單槓與選手 SVG -->
+          <svg id="pullup-svg" class="pullup-svg" viewBox="0 0 420 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="單槓懸吊選手動畫">
+            <defs>
+              <linearGradient id="barMetal" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#1e293b"/>
+                <stop offset="25%" stop-color="#94a3b8"/>
+                <stop offset="50%" stop-color="#f8fafc"/>
+                <stop offset="75%" stop-color="#94a3b8"/>
+                <stop offset="100%" stop-color="#1e293b"/>
+              </linearGradient>
+              <linearGradient id="neonCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00f5ff"/>
+                <stop offset="100%" stop-color="#3b82f6"/>
+              </linearGradient>
+              <linearGradient id="athleteSuit" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#1e293b"/>
+                <stop offset="100%" stop-color="#0f172a"/>
+              </linearGradient>
+              <filter id="neonGlow" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <filter id="strongGlow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="7" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            <!-- 龍門架支撐柱 -->
+            <g class="rig-frame">
+              <rect x="34" y="14" width="14" height="240" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+              <rect x="372" y="14" width="14" height="240" rx="4" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+              <!-- 支撐柱霓虹裝飾條 -->
+              <line x1="41" y1="24" x2="41" y2="244" class="rig-neon" stroke="#00f5ff" stroke-width="2" opacity="0.5"/>
+              <line x1="379" y1="24" x2="379" y2="244" class="rig-neon" stroke="#00f5ff" stroke-width="2" opacity="0.5"/>
+              <!-- 地板能量線 -->
+              <line x1="16" y1="250" x2="404" y2="250" stroke="#334155" stroke-width="2"/>
+              <ellipse cx="210" cy="250" rx="95" ry="6" class="floor-glow" fill="#00f5ff" opacity="0.16"/>
+            </g>
+
+            <!-- 主單槓橫桿 -->
+            <g class="pullup-bar-group">
+              <rect x="26" y="42" width="368" height="10" rx="5" fill="url(#barMetal)"/>
+              <line x1="36" y1="47" x2="384" y2="47" class="bar-energy-core" stroke="#00f5ff" stroke-width="3" filter="url(#neonGlow)"/>
+              <!-- 握把止滑紋路 -->
+              <rect x="148" y="40" width="24" height="14" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+              <rect x="248" y="40" width="24" height="14" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+              <!-- 能量電弧（懸吊時閃爍） -->
+              <path class="bar-arc arc-left" d="M 130 47 Q 145 35 160 47 T 190 47" fill="none" stroke="#00f5ff" stroke-width="2" filter="url(#neonGlow)"/>
+              <path class="bar-arc arc-right" d="M 230 47 Q 245 59 260 47 T 290 47" fill="none" stroke="#ff007f" stroke-width="2" filter="url(#neonGlow)"/>
+            </g>
+
+            <!-- 選手全身群組（隨狀態切換姿勢與晃動） -->
+            <g id="athlete-rig" class="athlete-rig">
+              <!-- 氣場光環 -->
+              <ellipse cx="210" cy="145" rx="48" ry="86" class="athlete-aura" fill="#00f5ff" opacity="0"/>
+
+              <!-- 左手臂 & 右手臂 -->
+              <g class="arms-group">
+                <path id="arm-left" class="limb arm-left" d="M 160 48 L 183 108" stroke="#e2e8f0" stroke-width="13" stroke-linecap="round"/>
+                <path id="arm-right" class="limb arm-right" d="M 260 48 L 237 108" stroke="#e2e8f0" stroke-width="13" stroke-linecap="round"/>
+                <!-- 手臂霓虹護腕/線條 -->
+                <path class="arm-neon-left" d="M 160 48 L 183 108" stroke="#00f5ff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+                <path class="arm-neon-right" d="M 260 48 L 237 108" stroke="#00f5ff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+              </g>
+
+              <!-- 手掌抓槓 -->
+              <g class="hands-group">
+                <rect x="151" y="39" width="18" height="15" rx="5" fill="#f8fafc" stroke="#00f5ff" stroke-width="2" class="hand-glow"/>
+                <rect x="251" y="39" width="18" height="15" rx="5" fill="#f8fafc" stroke="#00f5ff" stroke-width="2" class="hand-glow"/>
+                <!-- 摩擦火花 -->
+                <circle cx="160" cy="46" r="6" class="grip-spark spark-l" fill="#fbbf24" opacity="0" filter="url(#strongGlow)"/>
+                <circle cx="260" cy="46" r="6" class="grip-spark spark-r" fill="#fbbf24" opacity="0" filter="url(#strongGlow)"/>
+              </g>
+
+              <!-- 身體下半部擺動群組（軀幹 + 頭 + 腿） -->
+              <g class="body-swing">
+                <!-- 雙腿 -->
+                <g class="legs-group">
+                  <path id="leg-left" d="M 196 164 L 188 214 L 194 242" fill="none" stroke="url(#athleteSuit)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path id="leg-right" d="M 224 164 L 232 214 L 226 242" fill="none" stroke="url(#athleteSuit)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+                  <!-- 運動鞋霓虹邊 -->
+                  <ellipse cx="194" cy="244" rx="10" ry="5" fill="#00f5ff" class="shoe-glow"/>
+                  <ellipse cx="226" cy="244" rx="10" ry="5" fill="#00f5ff" class="shoe-glow"/>
+                </g>
+
+                <!-- 倒三角健美軀幹 -->
+                <path d="M 176 105 L 244 105 L 229 166 L 191 166 Z" fill="url(#athleteSuit)" stroke="#38bdf8" stroke-width="2" class="torso-outline"/>
+                <!-- 胸口核心反應爐 -->
+                <polygon points="210,118 220,130 210,142 200,130" fill="#00f5ff" class="core-crystal" filter="url(#neonGlow)"/>
+
+                <!-- 頭部 & 頭帶 & 護目鏡 -->
+                <g class="head-group">
+                  <circle cx="210" cy="84" r="18" fill="#f1f5f9"/>
+                  <!-- 電競頭帶 -->
+                  <rect x="192" y="74" width="36" height="7" rx="3" fill="#ff007f" class="headband"/>
+                  <!-- 頭帶飄帶 -->
+                  <path d="M 228 77 Q 244 72 252 80" fill="none" stroke="#ff007f" stroke-width="4" stroke-linecap="round" class="headband-tail"/>
+                  <!-- 霓虹護目鏡 -->
+                  <rect x="197" y="81" width="26" height="8" rx="4" fill="#0f172a" stroke="#00f5ff" stroke-width="1.8" class="visor"/>
+                </g>
+              </g>
+            </g>
+          </svg>
+
+          <!-- 倒數準備浮層 -->
+          <div id="countdown-overlay" class="countdown-overlay" hidden>
+            <div class="countdown-label">準備上槓！GRAB THE BAR</div>
+            <div id="countdown-number" class="countdown-number">5</div>
+          </div>
+        </div>
+
+        <!-- 數位碼錶顯示區 -->
+        <div class="timer-display-wrap">
+          <div id="timer-display" class="timer-display">00:00<span class="ms">.00</span></div>
+          <div id="overtake-box" class="overtake-box">
+            <span id="overtake-text">輸入暱稱並按下開始，挑戰單槓極限！</span>
+            <div class="overtake-track">
+              <div id="overtake-fill" class="overtake-fill" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 選手資訊與控制面板 -->
+        <div class="control-deck">
+          <div class="input-row">
+            <div class="field-group">
+              <label for="player-name-input">選手暱稱</label>
+              <input id="player-name-input" type="text" maxlength="20" placeholder="輸入你的大名（如：阿勝）" autocomplete="off" />
+            </div>
+            <div class="field-group countdown-select-group">
+              <label for="countdown-select">上槓倒數</label>
+              <select id="countdown-select">
+                <option value="0">0 秒 (立即)</option>
+                <option value="3">3 秒</option>
+                <option value="5" selected>5 秒 (推薦)</option>
+                <option value="10">10 秒</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 既有選手快選 -->
+          <div id="quick-players-wrap" class="quick-players-wrap" hidden>
+            <span class="quick-label">快速點名：</span>
+            <div id="quick-players" class="quick-players"></div>
+          </div>
+
+          <!-- 握法選擇 -->
+          <div class="grip-selector-wrap">
+            <span class="grip-label">握法：</span>
+            <div class="grip-pills" role="radiogroup" aria-label="單槓握法">
+              <button type="button" class="grip-pill active" data-grip="overhand">正手 Overhand</button>
+              <button type="button" class="grip-pill" data-grip="underhand">反手 Underhand</button>
+              <button type="button" class="grip-pill" data-grip="mixed">混合 Mixed</button>
+            </div>
+          </div>
+
+          <!-- 主要巨型按鈕 -->
+          <div class="action-buttons">
+            <button id="main-action-btn" class="btn-arcade btn-start" type="button">
+              <span class="btn-icon">⚡</span>
+              <span id="main-action-text">開始挑戰</span>
+            </button>
+            <button id="manual-open-btn" class="btn-secondary" type="button">
+              ✍️ 手動補登
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右側：榮耀頒獎台 + 雙頁籤排行榜 -->
+      <section class="arena-card board-card">
+        <div class="board-header">
+          <div>
+            <h2 class="board-title">🏆 榮耀排行榜</h2>
+            <p id="board-stats" class="board-stats">載入戰績中...</p>
+          </div>
+          <button id="refresh-btn" class="icon-btn" type="button" title="重新整理排行榜">🔄</button>
+        </div>
+
+        <!-- Top 3 電競頒獎台 -->
+        <div id="podium-grid" class="podium-grid">
+          <!-- JS 動態渲染 #2 / #1 / #3 -->
+        </div>
+
+        <!-- 雙頁籤切換 + 握法篩選 -->
+        <div class="board-controls">
+          <div class="tab-switcher">
+            <button id="tab-pb" class="tab-btn active" type="button">選手最佳 (PB)</button>
+            <button id="tab-history" class="tab-btn" type="button">所有挑戰紀錄</button>
+          </div>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter="all" type="button">全部</button>
+            <button class="filter-pill" data-filter="overhand" type="button">正手</button>
+            <button class="filter-pill" data-filter="underhand" type="button">反手</button>
+            <button class="filter-pill" data-filter="mixed" type="button">混合</button>
+          </div>
+        </div>
+
+        <!-- 排行榜列表 -->
+        <div id="leaderboard-list" class="leaderboard-list">
+          <!-- JS 動態渲染 -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 完賽慶祝彈窗 -->
+  <div id="result-modal" class="modal-backdrop" hidden>
+    <div class="modal-card result-modal-card">
+      <div id="result-badge" class="result-badge">CHALLENGE COMPLETE</div>
+      <h2 id="result-title" class="result-title">挑戰成功！</h2>
+      <div id="result-time" class="result-time">00:45.23</div>
+      <p id="result-meta" class="result-meta">阿勝 · 正手 Overhand</p>
+      <div id="result-rank-banner" class="result-rank-banner">目前總排名第 2 名！</div>
+      <div class="modal-actions">
+        <button id="result-retry-btn" class="btn-arcade btn-start" type="button">⚡ 再戰一場</button>
+        <button id="result-close-btn" class="btn-secondary" type="button">查看排行榜</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 手動補登彈窗 -->
+  <div id="manual-modal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>✍️ 手動補登單槓成績</h3>
+        <button id="manual-close-x" class="close-x" type="button" aria-label="關閉">✕</button>
+      </div>
+      <form id="manual-form" class="manual-form">
+        <div class="field-group">
+          <label for="manual-player">選手暱稱</label>
+          <input id="manual-player" type="text" maxlength="20" required placeholder="例如：阿勝" />
+        </div>
+        <div class="time-inputs-row">
+          <div class="field-group">
+            <label for="manual-min">分 (Min)</label>
+            <input id="manual-min" type="number" min="0" max="59" value="0" />
+          </div>
+          <div class="field-group">
+            <label for="manual-sec">秒 (Sec)</label>
+            <input id="manual-sec" type="number" min="0" max="59" step="0.01" value="30" required />
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="manual-grip">握法</label>
+          <select id="manual-grip">
+            <option value="overhand">正手 Overhand</option>
+            <option value="underhand">反手 Underhand</option>
+            <option value="mixed">混合 Mixed</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn-arcade btn-start">💾 儲存成績</button>
+          <button type="button" id="manual-cancel-btn" class="btn-secondary">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Supabase 雲端同步設定彈窗 -->
+  <div id="cloud-modal" class="modal-backdrop" hidden>
+    <div class="modal-card cloud-modal-card">
+      <div class="modal-head">
+        <h3>☁️ 跨裝置雲端同步設定 (Supabase)</h3>
+        <button id="cloud-close-x" class="close-x" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="cloud-guide">
+        <p id="cloud-current-state" class="cloud-state-box">目前為「本地展示模式」，成績僅儲存在此裝置瀏覽器。</p>
+        <ol class="cloud-steps">
+          <li>前往 <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> 免費建立新專案。</li>
+          <li>在專案的 <strong>SQL Editor</strong> 貼上並執行專案內的 <code>supabase_setup.sql</code>。</li>
+          <li>到 <strong>Project Settings → API</strong> 複製 <code>Project URL</code> 與 <code>anon public key</code>。</li>
+          <li>填入下方欄位立即連線測試，或直接寫入 <code>config.js</code> 後部署至 Vercel / GitHub Pages。</li>
+        </ol>
+        <form id="cloud-form" class="manual-form">
+          <div class="field-group">
+            <label for="cloud-url-input">Supabase Project URL</label>
+            <input id="cloud-url-input" type="url" placeholder="https://xxxxxx.supabase.co" />
+          </div>
+          <div class="field-group">
+            <label for="cloud-key-input">Supabase Anon Key</label>
+            <input id="cloud-key-input" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn-arcade btn-start">🔗 立即套用連線</button>
+            <button type="button" id="cloud-reset-btn" class="btn-secondary">切回本地模式</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

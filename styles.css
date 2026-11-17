@@ -150,6 +150,10 @@ html, body {
   background: #39ff14;
   box-shadow: 0 0 10px #39ff14;
 }
+.hud-pill.bgm-on {
+  border-color: rgba(255, 0, 127, 0.55);
+  box-shadow: 0 0 14px rgba(255, 0, 127, 0.25);
+}
 
 /* 主雙欄排版 */
 .arena-grid {
@@ -211,39 +215,53 @@ html, body {
 }
 
 /* ============================================================
-   炫酷吊單槓舞台 & SVG 動畫
+   炫酷真人吊單槓舞台 & 動態物理動畫
    ============================================================ */
 .bar-stage {
   position: relative;
   border-radius: 18px;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 25%, rgba(15, 35, 70, 0.9), #040711 85%);
-  border: 1px solid rgba(56, 189, 248, 0.22);
-  height: 250px;
+  background: radial-gradient(circle at 50% 25%, rgba(15, 35, 70, 0.92), #03060f 85%);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  height: 310px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.75);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.85);
 }
 
 .spotlight {
   position: absolute;
   top: -30px;
-  width: 180px;
-  height: 320px;
-  background: linear-gradient(180deg, rgba(0, 245, 255, 0.18), transparent 80%);
-  filter: blur(12px);
+  width: 200px;
+  height: 360px;
+  background: linear-gradient(180deg, rgba(0, 245, 255, 0.2), transparent 80%);
+  filter: blur(14px);
   pointer-events: none;
+  z-index: 3;
   transition: opacity 0.3s ease;
 }
 .spotlight-left {
-  left: 10%;
+  left: 8%;
   transform: rotate(16deg);
 }
 .spotlight-right {
-  right: 10%;
+  right: 8%;
   transform: rotate(-16deg);
-  background: linear-gradient(180deg, rgba(255, 0, 127, 0.14), transparent 80%);
+  background: linear-gradient(180deg, rgba(255, 0, 127, 0.16), transparent 80%);
+}
+
+.real-aura {
+  position: absolute;
+  width: 230px;
+  height: 270px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
+  opacity: 0.12;
+  filter: blur(28px);
+  z-index: 1;
+  pointer-events: none;
+  transition: all 0.35s ease;
 }
 
 .speed-lines {
@@ -254,134 +272,158 @@ html, body {
     to bottom,
     transparent 0px,
     transparent 24px,
-    rgba(0, 245, 255, 0.14) 24px,
-    rgba(0, 245, 255, 0.14) 26px
+    rgba(0, 245, 255, 0.18) 24px,
+    rgba(0, 245, 255, 0.18) 26px
   );
   background-size: 100% 60px;
   pointer-events: none;
+  z-index: 4;
   transition: opacity 0.35s ease;
 }
 
-.pullup-svg {
-  width: 100%;
-  max-width: 420px;
+/* 頂部發光單槓與手掌火花 */
+.real-bar-overlay {
+  position: absolute;
+  top: 20px;
+  left: 6%;
+  right: 6%;
+  height: 16px;
+  z-index: 5;
+  pointer-events: none;
+}
+.real-bar-steel {
+  position: absolute;
+  inset: 3px 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1e293b, #94a3b8 25%, #f8fafc 50%, #94a3b8 75%, #1e293b);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}
+.real-bar-core {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  box-shadow: 0 0 14px var(--accent-primary), 0 0 28px var(--accent-primary);
+  opacity: 0.75;
+  transition: all 0.3s ease;
+}
+.real-spark {
+  position: absolute;
+  top: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0%, #fbbf24 45%, transparent 75%);
+  opacity: 0;
+  filter: blur(1px);
+}
+.real-spark.spark-left { left: 32%; }
+.real-spark.spark-right { right: 32%; }
+
+/* 真人選手照片容器 */
+.real-athlete-wrap {
+  position: relative;
   height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   z-index: 2;
+  transform-origin: 50% 24px;
+  -webkit-mask-image: radial-gradient(ellipse 68% 92% at 50% 48%, #000 58%, transparent 100%);
+  mask-image: radial-gradient(ellipse 68% 92% at 50% 48%, #000 58%, transparent 100%);
 }
-
-.bar-energy-core, .rig-neon, .arm-neon-left, .arm-neon-right, .core-crystal, .visor {
-  transition: stroke 0.35s ease, fill 0.35s ease;
+.real-athlete-img {
+  height: 102%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: top center;
+  filter: contrast(1.12) saturate(1.15) drop-shadow(0 0 18px rgba(0, 245, 255, 0.25));
+  transition: filter 0.35s ease;
 }
-
-.body-swing {
-  transform-origin: 210px 48px;
-}
-.athlete-rig {
-  transform-origin: 210px 48px;
+.real-rim-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(0, 245, 255, 0.12), transparent 45%, rgba(255, 0, 127, 0.14));
+  mix-blend-mode: screen;
+  pointer-events: none;
 }
 
 /* 待機呼吸動畫 */
-.bar-stage.state-idle .body-swing {
-  animation: idleBreath 2.8s ease-in-out infinite;
-}
-.bar-stage.state-idle .bar-arc {
-  opacity: 0.25;
+.bar-stage.state-idle .real-athlete-wrap {
+  animation: realIdleBreath 3s ease-in-out infinite;
 }
 
 /* 倒數預備躍起動畫 */
-.bar-stage.state-countdown .athlete-rig {
-  animation: countdownPrep 0.7s ease-in-out infinite alternate;
+.bar-stage.state-countdown .real-athlete-wrap {
+  animation: realCountdownPrep 0.65s ease-in-out infinite alternate;
 }
-.bar-stage.state-countdown .bar-arc {
-  opacity: 0.9;
-  animation: arcFlicker 0.2s linear infinite;
+.bar-stage.state-countdown .real-bar-core {
+  opacity: 1;
+  box-shadow: 0 0 22px var(--accent-gold), 0 0 40px var(--accent-secondary);
 }
 
 /* 正式懸吊動態物理動畫 */
 .bar-stage.state-hanging .speed-lines {
-  opacity: 0.45;
-  animation: speedScroll 0.45s linear infinite;
+  opacity: 0.42;
+  animation: speedScroll 0.42s linear infinite;
 }
-.bar-stage.state-hanging .body-swing {
-  animation: hangSway 2.1s ease-in-out infinite;
+.bar-stage.state-hanging .real-athlete-wrap {
+  animation: realHangSway 2.3s ease-in-out infinite;
 }
-.bar-stage.state-hanging .athlete-rig {
-  animation: hangBob 1.3s ease-in-out infinite;
+.bar-stage.state-hanging .real-athlete-img {
+  filter: contrast(1.18) saturate(1.25) drop-shadow(0 0 26px var(--accent-primary));
 }
-.bar-stage.state-hanging .bar-energy-core {
-  stroke: var(--accent-primary);
-  stroke-width: 4.5;
-}
-.bar-stage.state-hanging .bar-arc {
+.bar-stage.state-hanging .real-bar-core {
   opacity: 1;
-  animation: arcFlicker 0.15s linear infinite;
+  height: 5px;
 }
-.bar-stage.state-hanging .grip-spark {
-  opacity: 0.95;
-  animation: sparkPulse 0.35s ease-in-out infinite alternate;
+.bar-stage.state-hanging .real-spark {
+  opacity: 1;
+  animation: sparkPulse 0.3s ease-in-out infinite alternate;
 }
-.bar-stage.state-hanging .athlete-aura {
-  fill: var(--accent-primary);
-  opacity: 0.22;
-  animation: auraPulse 1s ease-in-out infinite alternate;
-}
-.bar-stage.state-hanging .core-crystal {
-  fill: var(--accent-primary);
-  animation: coreBeat 0.65s ease-in-out infinite alternate;
-}
-.bar-stage.state-hanging .headband-tail {
-  animation: tailWhip 0.45s ease-in-out infinite alternate;
-  transform-origin: 228px 77px;
+.bar-stage.state-hanging .real-aura {
+  opacity: 0.34;
+  animation: auraPulse 0.9s ease-in-out infinite alternate;
 }
 
 /* 高階爆發抖動 (30s+) */
 body.tier-overdrive .bar-stage.state-hanging,
 body.tier-godlike .bar-stage.state-hanging,
 body.tier-immortal .bar-stage.state-hanging {
-  box-shadow: inset 0 0 60px rgba(251, 191, 36, 0.22), 0 0 28px rgba(255, 0, 127, 0.28);
+  box-shadow: inset 0 0 70px rgba(251, 191, 36, 0.25), 0 0 32px rgba(255, 0, 127, 0.32);
 }
-body.tier-godlike .bar-stage.state-hanging .pullup-svg,
-body.tier-immortal .bar-stage.state-hanging .pullup-svg {
-  animation: intenseShake 0.16s linear infinite;
+body.tier-godlike .bar-stage.state-hanging .real-athlete-img,
+body.tier-immortal .bar-stage.state-hanging .real-athlete-img {
+  animation: intenseShake 0.14s linear infinite;
 }
 
-@keyframes idleBreath {
-  0%, 100% { transform: rotate(-1.2deg) translateY(0px); }
-  50% { transform: rotate(1.2deg) translateY(2px); }
+@keyframes realIdleBreath {
+  0%, 100% { transform: rotate(-1deg) scale(1); }
+  50% { transform: rotate(1deg) scale(1.012); }
 }
-@keyframes countdownPrep {
-  0% { transform: translateY(10px) scaleY(0.95); }
-  100% { transform: translateY(-2px) scaleY(1.02); }
+@keyframes realCountdownPrep {
+  0% { transform: translateY(10px) scale(0.98); }
+  100% { transform: translateY(0px) scale(1.02); }
 }
-@keyframes hangSway {
-  0% { transform: rotate(-4.5deg); }
-  50% { transform: rotate(4.5deg); }
-  100% { transform: rotate(-4.5deg); }
-}
-@keyframes hangBob {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(4px); }
-}
-@keyframes arcFlicker {
-  0% { opacity: 0.3; stroke-dasharray: 6 4; }
-  50% { opacity: 1; stroke-dasharray: 12 2; }
-  100% { opacity: 0.5; stroke-dasharray: 4 6; }
+@keyframes realHangSway {
+  0% { transform: rotate(-3.2deg) translateY(0px); }
+  25% { transform: rotate(0deg) translateY(3px); }
+  50% { transform: rotate(3.2deg) translateY(0px); }
+  75% { transform: rotate(0deg) translateY(3px); }
+  100% { transform: rotate(-3.2deg) translateY(0px); }
 }
 @keyframes sparkPulse {
-  0% { transform: scale(0.7); opacity: 0.4; }
-  100% { transform: scale(1.4); opacity: 1; }
+  0% { transform: scale(0.75); opacity: 0.45; }
+  100% { transform: scale(1.55); opacity: 1; }
 }
 @keyframes auraPulse {
-  0% { opacity: 0.12; transform: scale(0.96); }
-  100% { opacity: 0.32; transform: scale(1.06); }
-}
-@keyframes coreBeat {
-  0% { transform: scale(0.92); opacity: 0.85; }
-  100% { transform: scale(1.12); opacity: 1; }
-}
-@keyframes tailWhip {
-  0% { transform: rotate(-6deg); }
-  100% { transform: rotate(8deg); }
+  0% { opacity: 0.18; transform: scale(0.95); }
+  100% { opacity: 0.42; transform: scale(1.08); }
 }
 @keyframes speedScroll {
   from { background-position: 0 0; }
@@ -389,9 +431,9 @@ body.tier-immortal .bar-stage.state-hanging .pullup-svg {
 }
 @keyframes intenseShake {
   0% { transform: translate(0, 0); }
-  25% { transform: translate(1px, -1px); }
-  50% { transform: translate(-1px, 1px); }
-  75% { transform: translate(1px, 1px); }
+  25% { transform: translate(1.5px, -1px); }
+  50% { transform: translate(-1.5px, 1px); }
+  75% { transform: translate(1px, 1.5px); }
   100% { transform: translate(0, 0); }
 }
 

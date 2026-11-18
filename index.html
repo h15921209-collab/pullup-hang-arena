@@ -32,6 +32,10 @@
           <span id="bgm-icon">🎵</span>
           <span id="bgm-label">熱血音樂開</span>
         </button>
+        <button id="voice-toggle-btn" class="hud-pill" type="button" aria-pressed="true">
+          <span id="voice-icon">🗣️</span>
+          <span id="voice-label">語音播報開</span>
+        </button>
         <button id="sound-toggle-btn" class="hud-pill" type="button" aria-pressed="true">
           <span id="sound-icon">🔊</span>
           <span id="sound-label">音效開啟</span>
@@ -80,13 +84,21 @@
           </div>
         </div>
 
-        <!-- 數位碼錶顯示區 -->
+        <!-- 數位碼錶顯示區 + 雙軌對戰進度條 -->
         <div class="timer-display-wrap">
           <div id="timer-display" class="timer-display">00:00<span class="ms">.00</span></div>
-          <div id="overtake-box" class="overtake-box">
-            <span id="overtake-text">輸入暱稱並按下開始，挑戰單槓極限！</span>
-            <div class="overtake-track">
-              <div id="overtake-fill" class="overtake-fill" style="width: 0%"></div>
+          <div class="battle-bars-grid">
+            <div id="overtake-box" class="overtake-box">
+              <span id="overtake-text">輸入暱稱並按下開始，挑戰單槓極限！</span>
+              <div class="overtake-track">
+                <div id="overtake-fill" class="overtake-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div id="ghost-box" class="overtake-box ghost-box">
+              <span id="ghost-text">👻 Ghost 對戰：尚無個人紀錄</span>
+              <div class="overtake-track">
+                <div id="ghost-fill" class="overtake-fill ghost-fill" style="width: 0%"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -109,6 +121,22 @@
             </div>
           </div>
 
+          <!-- 選填體重與性別（用於相對強度榜與握力年齡） -->
+          <div class="profile-row">
+            <div class="field-group">
+              <label for="player-weight-input">體重 kg <span class="opt-tag">(選填)</span></label>
+              <input id="player-weight-input" type="number" min="25" max="250" step="0.5" placeholder="例如：70" />
+            </div>
+            <div class="field-group">
+              <label for="player-gender-select">性別 <span class="opt-tag">(選填)</span></label>
+              <select id="player-gender-select">
+                <option value="unspecified">不指定</option>
+                <option value="male">男性</option>
+                <option value="female">女性</option>
+              </select>
+            </div>
+          </div>
+
           <!-- 既有選手快選 -->
           <div id="quick-players-wrap" class="quick-players-wrap" hidden>
             <span class="quick-label">快速點名：</span>
@@ -125,7 +153,7 @@
             </div>
           </div>
 
-          <!-- 主要巨型按鈕 -->
+          <!-- 主要巨型按鈕（戰鬥模式時佔滿下半部螢幕） -->
           <div class="action-buttons">
             <button id="main-action-btn" class="btn-arcade btn-start" type="button">
               <span class="btn-icon">⚡</span>
@@ -134,6 +162,26 @@
             <button id="manual-open-btn" class="btn-secondary" type="button">
               ✍️ 手動補登
             </button>
+          </div>
+        </div>
+
+        <!-- 個人成長儀表板（段位 / 總秒數 / 連勝 / 握力年齡） -->
+        <div id="personal-stats-bar" class="personal-stats-bar">
+          <div class="pstat-item pstat-rank">
+            <span class="pstat-label">目前段位</span>
+            <strong id="pstat-tier" class="pstat-val">🦥 樹懶學徒</strong>
+          </div>
+          <div class="pstat-item">
+            <span class="pstat-label">累計懸吊</span>
+            <strong id="pstat-total" class="pstat-val">0.0s</strong>
+          </div>
+          <div class="pstat-item">
+            <span class="pstat-label">連續天數</span>
+            <strong id="pstat-streak" class="pstat-val">0 天</strong>
+          </div>
+          <div class="pstat-item">
+            <span class="pstat-label">握力年齡</span>
+            <strong id="pstat-gripage" class="pstat-val">-- 歲</strong>
           </div>
         </div>
       </section>
@@ -153,17 +201,23 @@
           <!-- JS 動態渲染 #2 / #1 / #3 -->
         </div>
 
-        <!-- 雙頁籤切換 + 握法篩選 -->
+        <!-- 雙頁籤切換 + 榜單模式 + 握法篩選 -->
         <div class="board-controls">
           <div class="tab-switcher">
             <button id="tab-pb" class="tab-btn active" type="button">選手最佳 (PB)</button>
             <button id="tab-history" class="tab-btn" type="button">所有挑戰紀錄</button>
           </div>
-          <div class="filter-pills">
-            <button class="filter-pill active" data-filter="all" type="button">全部</button>
-            <button class="filter-pill" data-filter="overhand" type="button">正手</button>
-            <button class="filter-pill" data-filter="underhand" type="button">反手</button>
-            <button class="filter-pill" data-filter="mixed" type="button">混合</button>
+          <div class="mode-and-filter">
+            <div class="score-mode-pills">
+              <button id="mode-time-btn" class="mode-pill active" type="button">⏱️ 純秒數榜</button>
+              <button id="mode-relative-btn" class="mode-pill" type="button" title="依 70kg 基準換算相對體重強度：秒數 × (體重 / 70)">⚖️ 體重強度榜</button>
+            </div>
+            <div class="filter-pills">
+              <button class="filter-pill active" data-filter="all" type="button">全部</button>
+              <button class="filter-pill" data-filter="overhand" type="button">正手</button>
+              <button class="filter-pill" data-filter="underhand" type="button">反手</button>
+              <button class="filter-pill" data-filter="mixed" type="button">混合</button>
+            </div>
           </div>
         </div>
 
@@ -181,14 +235,19 @@
       <div id="result-badge" class="result-badge">CHALLENGE COMPLETE</div>
       <h2 id="result-title" class="result-title">挑戰成功！</h2>
       <div id="result-time" class="result-time">00:45.23</div>
+      <div id="result-tier-pill" class="result-tier-pill">🦍 猿猴戰士</div>
       <p id="result-meta" class="result-meta">阿勝 · 正手 Overhand</p>
       <div id="result-rank-banner" class="result-rank-banner">目前總排名第 2 名！</div>
+      <button id="result-share-btn" class="btn-share-card" type="button">📋 一鍵複製挑釁戰書（傳 LINE / IG）</button>
       <div class="modal-actions">
         <button id="result-retry-btn" class="btn-arcade btn-start" type="button">⚡ 再戰一場</button>
         <button id="result-close-btn" class="btn-secondary" type="button">查看排行榜</button>
       </div>
     </div>
   </div>
+
+  <!-- 輕量提示 Toast -->
+  <div id="toast" class="toast" hidden>已複製！</div>
 
   <!-- 手動補登彈窗 -->
   <div id="manual-modal" class="modal-backdrop" hidden>

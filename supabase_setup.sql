@@ -1,5 +1,5 @@
 -- ============================================================
--- IRON BAR ARENA 單槓持久度競賽 - Supabase 資料表設定腳本
+-- IRON BAR ARENA 2.0 單槓持久度競賽 - Supabase 資料表設定腳本
 -- 請至 Supabase Dashboard -> SQL Editor 貼上並執行 (Run)
 -- ============================================================
 
@@ -9,10 +9,16 @@ create table if not exists public.hang_records (
   player_name text not null check (char_length(trim(player_name)) between 1 and 24),
   duration_ms integer not null check (duration_ms > 0 and duration_ms <= 3600000),
   grip_type text not null default 'overhand' check (grip_type in ('overhand', 'underhand', 'mixed')),
+  weight_kg numeric(5,1) check (weight_kg is null or (weight_kg >= 25 and weight_kg <= 250)),
+  gender text default 'unspecified' check (gender in ('unspecified', 'male', 'female')),
   client_id text not null,
   is_manual boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+-- 若為 1.0 舊表升級，自動補上新欄位
+alter table public.hang_records add column if not exists weight_kg numeric(5,1);
+alter table public.hang_records add column if not exists gender text default 'unspecified';
 
 -- 2. 建立索引以加速排行榜查詢
 create index if not exists idx_hang_records_duration on public.hang_records (duration_ms desc);

@@ -1087,3 +1087,211 @@ body.tier-immortal .bar-stage.state-hanging .real-athlete-img {
   color: var(--accent-gold);
   font-size: 12px;
 }
+
+/* ============================================================
+   2.0 優化新增樣式：雙軌對戰條、個人成長列、實戰沉浸 HUD、戰書分享
+   ============================================================ */
+.battle-bars-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 560px) {
+  .battle-bars-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.battle-bars-grid .overtake-box {
+  margin-top: 0;
+}
+.ghost-box {
+  border-color: rgba(192, 132, 252, 0.28);
+}
+.ghost-fill {
+  background: linear-gradient(90deg, #a855f7, #00f5ff);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.7);
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.opt-tag {
+  font-size: 10px;
+  color: var(--accent-primary);
+  opacity: 0.8;
+}
+
+/* 個人成長儀表板 */
+.personal-stats-bar {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+@media (max-width: 540px) {
+  .personal-stats-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.pstat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.45);
+}
+.pstat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pstat-val {
+  font-family: var(--font-hud);
+  font-size: 14px;
+  color: #fff;
+}
+.pstat-rank .pstat-val {
+  color: var(--accent-gold);
+}
+
+/* 榜單模式切換 */
+.mode-and-filter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.score-mode-pills {
+  display: flex;
+  gap: 6px;
+}
+.mode-pill {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: rgba(15, 23, 42, 0.75);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mode-pill.active {
+  border-color: var(--accent-gold);
+  background: rgba(251, 191, 36, 0.16);
+  color: #fff;
+}
+
+.rank-tier-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #bae6fd;
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+/* 完賽段位徽章 & 挑釁戰書按鈕 */
+.result-tier-pill {
+  display: inline-block;
+  margin: 4px auto 8px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  color: var(--accent-gold);
+  font-family: var(--font-hud);
+  font-size: 14px;
+  font-weight: 700;
+}
+.btn-share-card {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 245, 255, 0.45);
+  background: rgba(0, 245, 255, 0.12);
+  color: #e0f2fe;
+  font-family: var(--font-hud);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-share-card:hover {
+  background: rgba(0, 245, 255, 0.22);
+  box-shadow: 0 0 16px rgba(0, 245, 255, 0.3);
+}
+
+/* 輕量 Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--accent-primary);
+  color: #fff;
+  font-family: var(--font-hud);
+  font-size: 14px;
+  box-shadow: 0 0 24px rgba(0, 245, 255, 0.4);
+  z-index: 120;
+}
+.toast[hidden] { display: none; }
+
+/* ============================================================
+   實戰沉浸全螢幕戰鬥模式 (body.combat-mode)
+   ============================================================ */
+body.combat-mode .app-shell {
+  max-width: 820px;
+  padding: 10px;
+}
+body.combat-mode .hud-header,
+body.combat-mode .board-card,
+body.combat-mode .input-row,
+body.combat-mode .profile-row,
+body.combat-mode .quick-players-wrap,
+body.combat-mode .grip-selector-wrap,
+body.combat-mode #manual-open-btn,
+body.combat-mode .personal-stats-bar {
+  display: none !important;
+}
+body.combat-mode .arena-grid {
+  grid-template-columns: 1fr;
+}
+body.combat-mode .stage-card {
+  min-height: calc(100dvh - 20px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 40px rgba(0, 245, 255, 0.22);
+}
+body.combat-mode .bar-stage {
+  height: 36vh;
+  min-height: 220px;
+}
+body.combat-mode .timer-display {
+  font-size: clamp(62px, 15vw, 96px);
+}
+body.combat-mode .action-buttons {
+  grid-template-columns: 1fr;
+}
+body.combat-mode #main-action-btn {
+  min-height: 24vh;
+  font-size: clamp(24px, 5vw, 34px);
+  border-radius: 22px;
+}
+

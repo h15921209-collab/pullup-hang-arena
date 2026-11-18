@@ -14,12 +14,23 @@ const TIERS = [
   { minMs: 0, cls: "tier-warmup", label: "WARMUP · 鎖定抓槓中" }
 ];
 
+const ARCADE_RANKS = [
+  { minMs: 90000, title: "👑 非人類傳說" },
+  { minMs: 60000, title: "⚡ 單槓戰神" },
+  { minMs: 30000, title: "🦍 鋼鐵金剛" },
+  { minMs: 15000, title: "🐒 猿猴戰士" },
+  { minMs: 0, title: "🦥 樹懶學徒" }
+];
+
 const LS_KEYS = {
   RECORDS: "iron_bar_records_v1",
   PLAYER_NAME: "iron_bar_player_name",
+  PLAYER_WEIGHT: "iron_bar_player_weight",
+  PLAYER_GENDER: "iron_bar_player_gender",
   CLIENT_ID: "iron_bar_client_id",
   SOUND: "iron_bar_sound_on",
   BGM: "iron_bar_bgm_on",
+  VOICE: "iron_bar_voice_on",
   CLOUD_OVERRIDE: "iron_bar_cloud_override"
 };
 
@@ -31,9 +42,11 @@ const state = {
   phase: "idle", // idle | countdown | hanging
   grip: "overhand",
   activeTab: "pb", // pb | history
+  scoreMode: "time", // time | relative
   gripFilter: "all",
   soundEnabled: localStorage.getItem(LS_KEYS.SOUND) !== "false",
   bgmEnabled: localStorage.getItem(LS_KEYS.BGM) !== "false",
+  voiceEnabled: localStorage.getItem(LS_KEYS.VOICE) !== "false",
   bgmPlaying: false,
   bgmTimerId: null,
   bgmStep: 0,
@@ -45,7 +58,10 @@ const state = {
   rafId: null,
   hangStartPerf: 0,
   lastTierCls: "tier-idle",
-  wakeLock: null
+  wakeLock: null,
+  personalPB: 0,
+  spokenMilestones: new Set(),
+  lastChallengeText: ""
 };
 
 // DOM 快取
@@ -55,6 +71,9 @@ const el = {
   bgmToggleBtn: document.getElementById("bgm-toggle-btn"),
   bgmIcon: document.getElementById("bgm-icon"),
   bgmLabel: document.getElementById("bgm-label"),
+  voiceToggleBtn: document.getElementById("voice-toggle-btn"),
+  voiceIcon: document.getElementById("voice-icon"),
+  voiceLabel: document.getElementById("voice-label"),
   soundToggleBtn: document.getElementById("sound-toggle-btn"),
   soundIcon: document.getElementById("sound-icon"),
   soundLabel: document.getElementById("sound-label"),
@@ -67,9 +86,13 @@ const el = {
   timerDisplay: document.getElementById("timer-display"),
   overtakeText: document.getElementById("overtake-text"),
   overtakeFill: document.getElementById("overtake-fill"),
+  ghostText: document.getElementById("ghost-text"),
+  ghostFill: document.getElementById("ghost-fill"),
 
   playerNameInput: document.getElementById("player-name-input"),
   countdownSelect: document.getElementById("countdown-select"),
+  playerWeightInput: document.getElementById("player-weight-input"),
+  playerGenderSelect: document.getElementById("player-gender-select"),
   quickPlayersWrap: document.getElementById("quick-players-wrap"),
   quickPlayers: document.getElementById("quick-players"),
   gripPills: document.querySelectorAll(".grip-pill"),
@@ -77,11 +100,18 @@ const el = {
   mainActionText: document.getElementById("main-action-text"),
   manualOpenBtn: document.getElementById("manual-open-btn"),
 
+  pstatTier: document.getElementById("pstat-tier"),
+  pstatTotal: document.getElementById("pstat-total"),
+  pstatStreak: document.getElementById("pstat-streak"),
+  pstatGripAge: document.getElementById("pstat-gripage"),
+
   boardStats: document.getElementById("board-stats"),
   refreshBtn: document.getElementById("refresh-btn"),
   podiumGrid: document.getElementById("podium-grid"),
   tabPb: document.getElementById("tab-pb"),
   tabHistory: document.getElementById("tab-history"),
+  modeTimeBtn: document.getElementById("mode-time-btn"),
+  modeRelativeBtn: document.getElementById("mode-relative-btn"),
   filterPills: document.querySelectorAll(".filter-pill"),
   leaderboardList: document.getElementById("leaderboard-list"),
 
@@ -89,10 +119,13 @@ const el = {
   resultBadge: document.getElementById("result-badge"),
   resultTitle: document.getElementById("result-title"),
   resultTime: document.getElementById("result-time"),
+  resultTierPill: document.getElementById("result-tier-pill"),
   resultMeta: document.getElementById("result-meta"),
   resultRankBanner: document.getElementById("result-rank-banner"),
+  resultShareBtn: document.getElementById("result-share-btn"),
   resultRetryBtn: document.getElementById("result-retry-btn"),
   resultCloseBtn: document.getElementById("result-close-btn"),
+  toast: document.getElementById("toast"),
 
   manualModal: document.getElementById("manual-modal"),
   manualForm: document.getElementById("manual-form"),
@@ -154,6 +187,52 @@ function formatDateShort(iso) {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${m}/${day} ${hh}:${mm}`;
+}
+
+function getArcadeRank(ms) {
+  return ARCADE_RANKS.find((r) => ms >= r.minMs) || ARCADE_RANKS[ARCADE_RANKS.length - 1];
+}
+
+function estimateGripAge(pbMs) {
+  if (!pbMs || pbMs <= 0) return "-- 歲";
+  const sec = pbMs / 1000;
+  if (sec >= 120) return "18 歲 (巔峰)";
+  if (sec >= 90) return "20 歲";
+  if (sec >= 60) return "24 歲";
+  if (sec >= 45) return "29 歲";
+  if (sec >= 30) return "35 歲";
+  if (sec >= 15) return "44 歲";
+  return "52 歲";
+}
+
+function calcRelativeScore(record) {
+  const sec = (record.duration_ms || 0) / 1000;
+  const w = Number(record.weight_kg);
+  if (!w || w <= 0) return sec;
+  return sec * (w / 70);
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  el.toast.textContent = msg;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.toast.hidden = true;
+  }, 2400);
+}
+
+function speakCue(text) {
+  if (!state.voiceEnabled || !("speechSynthesis" in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "zh-TW";
+    u.rate = 1.15;
+    u.pitch = 1.05;
+    u.volume = 0.95;
+    window.speechSynthesis.speak(u);
+  } catch {}
 }
 
 // ============================================================
@@ -499,6 +578,8 @@ function getDemoRecords() {
       player_name: "鋼鐵阿豪",
       duration_ms: 82450,
       grip_type: "overhand",
+      weight_kg: 76,
+      gender: "male",
       client_id: "demo",
       is_manual: false,
       created_at: new Date(now - 3600000 * 6).toISOString()
@@ -508,6 +589,8 @@ function getDemoRecords() {
       player_name: "霓虹小雪",
       duration_ms: 64120,
       grip_type: "underhand",
+      weight_kg: 54,
+      gender: "female",
       client_id: "demo",
       is_manual: false,
       created_at: new Date(now - 3600000 * 4).toISOString()
@@ -517,6 +600,8 @@ function getDemoRecords() {
       player_name: "閃電凱文",
       duration_ms: 48900,
       grip_type: "mixed",
+      weight_kg: 82,
+      gender: "male",
       client_id: "demo",
       is_manual: false,
       created_at: new Date(now - 3600000 * 2).toISOString()
@@ -617,15 +702,16 @@ async function fetchRecords() {
 
 async function insertRecord(payload) {
   if (state.isCloud && state.supabase) {
-    const { data, error } = await state.supabase
-      .from("hang_records")
-      .insert([payload])
-      .select()
-      .single();
-    if (error) throw error;
-    state.records.unshift(data);
+    let res = await state.supabase.from("hang_records").insert([payload]).select().single();
+    if (res.error && (res.error.message || "").includes("column")) {
+      // 相容 1.0 舊資料表：移除新欄位後重試
+      const { weight_kg, gender, ...legacyPayload } = payload;
+      res = await state.supabase.from("hang_records").insert([legacyPayload]).select().single();
+    }
+    if (res.error) throw res.error;
+    state.records.unshift(res.data);
     renderAll();
-    return data;
+    return res.data;
   } else {
     const item = {
       id: "loc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
@@ -662,25 +748,82 @@ function getFilteredRecords() {
   return state.records.filter((r) => r.grip_type === state.gripFilter);
 }
 
-function buildPBLeaderboard(recordsList) {
+function buildPBLeaderboard(recordsList, mode = state.scoreMode) {
   const bestByPlayer = new Map();
   for (const r of recordsList) {
     const key = r.player_name.trim().toLowerCase();
+    const scoreVal = mode === "relative" ? calcRelativeScore(r) : r.duration_ms;
     const existing = bestByPlayer.get(key);
     if (!existing) {
-      bestByPlayer.set(key, { ...r, attempts: 1 });
+      bestByPlayer.set(key, { ...r, attempts: 1, _sortScore: scoreVal });
     } else {
       existing.attempts += 1;
-      if (r.duration_ms > existing.duration_ms) {
-        bestByPlayer.set(key, { ...r, attempts: existing.attempts });
+      if (scoreVal > existing._sortScore) {
+        bestByPlayer.set(key, { ...r, attempts: existing.attempts, _sortScore: scoreVal });
       }
     }
   }
-  return Array.from(bestByPlayer.values()).sort((a, b) => b.duration_ms - a.duration_ms);
+  return Array.from(bestByPlayer.values()).sort((a, b) => b._sortScore - a._sortScore);
+}
+
+function calcStreakDays(playerRecords) {
+  if (playerRecords.length === 0) return 0;
+  const daySet = new Set(
+    playerRecords.map((r) => {
+      const d = new Date(r.created_at);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    })
+  );
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 365; i++) {
+    const key = `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`;
+    if (daySet.has(key)) {
+      streak += 1;
+    } else if (i > 0) {
+      break;
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function renderPersonalStats() {
+  const name = el.playerNameInput.value.trim().toLowerCase();
+  const mine = name
+    ? state.records.filter((r) => r.player_name.trim().toLowerCase() === name)
+    : [];
+
+  if (mine.length === 0) {
+    state.personalPB = 0;
+    el.pstatTier.textContent = "🦥 樹懶學徒";
+    el.pstatTotal.textContent = "0.0s";
+    el.pstatStreak.textContent = "0 天";
+    el.pstatGripAge.textContent = "-- 歲";
+    if (state.phase === "idle") {
+      el.ghostText.textContent = "👻 Ghost 對戰：完成一次挑戰後自動開啟";
+      el.ghostFill.style.width = "0%";
+    }
+    return;
+  }
+
+  const pbMs = mine.reduce((m, r) => Math.max(m, r.duration_ms), 0);
+  const totalSec = mine.reduce((sum, r) => sum + r.duration_ms / 1000, 0);
+  state.personalPB = pbMs;
+
+  el.pstatTier.textContent = getArcadeRank(pbMs).title;
+  el.pstatTotal.textContent = `${totalSec.toFixed(1)}s`;
+  el.pstatStreak.textContent = `${calcStreakDays(mine)} 天`;
+  el.pstatGripAge.textContent = estimateGripAge(pbMs);
+  if (state.phase === "idle") {
+    el.ghostText.textContent = `👻 Ghost 目標：你的 PB ${formatDuration(pbMs).full}`;
+    el.ghostFill.style.width = "0%";
+  }
 }
 
 function renderAll() {
   renderQuickPlayers();
+  renderPersonalStats();
   renderPodium();
   renderLeaderboardList();
 }
@@ -723,9 +866,10 @@ function renderQuickPlayers() {
 }
 
 function renderPodium() {
-  const pbList = buildPBLeaderboard(getFilteredRecords());
+  const pbList = buildPBLeaderboard(getFilteredRecords(), state.scoreMode);
   const totalCount = getFilteredRecords().length;
-  el.boardStats.textContent = `共 ${pbList.length} 位選手 · ${totalCount} 筆挑戰紀錄`;
+  const modeLabel = state.scoreMode === "relative" ? " · 體重相對強度榜 (70kg基準)" : "";
+  el.boardStats.textContent = `共 ${pbList.length} 位選手 · ${totalCount} 筆挑戰紀錄${modeLabel}`;
 
   if (pbList.length === 0) {
     el.podiumGrid.innerHTML = "";
@@ -744,12 +888,20 @@ function renderPodium() {
           <div class="podium-grip">等待挑戰者</div>
         </div>`;
     }
+    const scoreStr =
+      state.scoreMode === "relative"
+        ? `強度 ${calcRelativeScore(item).toFixed(1)}`
+        : formatDuration(item.duration_ms).full;
+    const subStr =
+      state.scoreMode === "relative"
+        ? `${formatDuration(item.duration_ms).full}${item.weight_kg ? ` · ${item.weight_kg}kg` : ""}`
+        : `${getArcadeRank(item.duration_ms).title}`;
     return `
       <div class="podium-card rank-${idx + 1}">
         <div class="podium-medal">${medals[idx]}</div>
         <div class="podium-name">${escapeHtml(item.player_name)}</div>
-        <div class="podium-time">${formatDuration(item.duration_ms).full}</div>
-        <div class="podium-grip">${GRIP_LABELS[item.grip_type] || item.grip_type}</div>
+        <div class="podium-time">${scoreStr}</div>
+        <div class="podium-grip">${subStr}</div>
       </div>`;
   });
 
@@ -766,27 +918,33 @@ function renderLeaderboardList() {
   }
 
   if (state.activeTab === "pb") {
-    const pbList = buildPBLeaderboard(filtered);
+    const pbList = buildPBLeaderboard(filtered, state.scoreMode);
     el.leaderboardList.innerHTML = pbList
       .map((item, i) => {
         const rank = i + 1;
         const topCls = rank <= 3 ? `top-${rank}` : "";
         const isMe = currentPlayer && item.player_name.trim().toLowerCase() === currentPlayer;
+        const tierTitle = getArcadeRank(item.duration_ms).title;
+        const rightScore =
+          state.scoreMode === "relative"
+            ? `${calcRelativeScore(item).toFixed(1)} <small style="font-size:11px;color:#94a3b8">(${formatDuration(item.duration_ms).full})</small>`
+            : formatDuration(item.duration_ms).full;
         return `
           <div class="rank-row ${isMe ? "is-me" : ""}">
             <div class="rank-left">
               <div class="rank-num ${topCls}">#${rank}</div>
               <div class="rank-info">
-                <div class="rank-name">${escapeHtml(item.player_name)}</div>
+                <div class="rank-name">${escapeHtml(item.player_name)}<span class="rank-tier-tag">${tierTitle}</span></div>
                 <div class="rank-meta">
                   <span>${GRIP_LABELS[item.grip_type] || item.grip_type}</span>
+                  ${item.weight_kg ? `<span>${item.weight_kg}kg</span>` : ""}
                   <span>挑戰 ${item.attempts} 次</span>
                   <span>${formatDateShort(item.created_at)}</span>
                 </div>
               </div>
             </div>
             <div class="rank-right">
-              <div class="rank-score">${formatDuration(item.duration_ms).full}</div>
+              <div class="rank-score">${rightScore}</div>
             </div>
           </div>`;
       })
@@ -844,6 +1002,7 @@ function setStageState(phase) {
   state.phase = phase;
   el.barStage.classList.remove("state-idle", "state-countdown", "state-hanging");
   el.barStage.classList.add(`state-${phase}`);
+  document.body.classList.toggle("combat-mode", phase !== "idle");
 
   el.mainActionBtn.classList.remove("btn-start", "btn-stop", "btn-cancel");
   if (phase === "idle") {
@@ -867,7 +1026,8 @@ function setStageState(phase) {
 
 function applyTier(elapsedMs, isIdle = false) {
   if (isIdle) {
-    document.body.className = "tier-idle";
+    document.body.classList.remove("tier-warmup", "tier-ignition", "tier-overdrive", "tier-godlike", "tier-immortal");
+    document.body.classList.add("tier-idle");
     state.lastTierCls = "tier-idle";
     el.tierName.textContent = "READY TO HANG";
     return;
@@ -877,20 +1037,70 @@ function applyTier(elapsedMs, isIdle = false) {
     if (state.lastTierCls !== "tier-idle" && state.lastTierCls !== "tier-warmup") {
       playTierUp();
     }
-    document.body.className = tier.cls;
+    document.body.classList.remove("tier-idle", "tier-warmup", "tier-ignition", "tier-overdrive", "tier-godlike", "tier-immortal");
+    document.body.classList.add(tier.cls);
     state.lastTierCls = tier.cls;
     el.tierName.textContent = tier.label;
   }
 }
 
+function updateGhostBar(elapsedMs) {
+  const pb = state.personalPB;
+  if (!pb || pb <= 0) {
+    el.ghostText.textContent = "👻 Ghost 對戰：創造你的第一個個人紀錄！";
+    el.ghostFill.style.width = "100%";
+    return;
+  }
+  if (elapsedMs >= pb) {
+    const ahead = ((elapsedMs - pb) / 1000).toFixed(1);
+    el.ghostText.textContent = `🔥 已超越自己的 PB (${formatDuration(pb).full}) +${ahead}s！`;
+    el.ghostFill.style.width = "100%";
+  } else {
+    const left = ((pb - elapsedMs) / 1000).toFixed(1);
+    const pct = Math.min(100, Math.max(2, (elapsedMs / pb) * 100));
+    el.ghostText.textContent = `👻 Ghost 對戰 PB (${formatDuration(pb).full}) · 還差 ${left}s`;
+    el.ghostFill.style.width = `${pct}%`;
+  }
+}
+
+function checkVoiceMilestones(elapsedMs) {
+  const sec = Math.floor(elapsedMs / 1000);
+  if (sec >= 15 && !state.spokenMilestones.has("15s")) {
+    state.spokenMilestones.add("15s");
+    speakCue("撐住！已經 15 秒了！");
+  } else if (sec >= 30 && !state.spokenMilestones.has("30s")) {
+    state.spokenMilestones.add("30s");
+    speakCue("30 秒！進入極限燃燒！");
+  } else if (sec >= 45 && !state.spokenMilestones.has("45s")) {
+    state.spokenMilestones.add("45s");
+    speakCue("45 秒！繼續咬緊牙關！");
+  } else if (sec >= 60 && !state.spokenMilestones.has("60s")) {
+    state.spokenMilestones.add("60s");
+    speakCue("60 秒！單槓戰神誕生！");
+  } else if (sec >= 90 && !state.spokenMilestones.has("90s")) {
+    state.spokenMilestones.add("90s");
+    speakCue("90 秒！進入非人類傳說領域！");
+  }
+
+  if (state.personalPB > 5000) {
+    const diff = state.personalPB - elapsedMs;
+    if (diff > 0 && diff <= 3000 && !state.spokenMilestones.has("pb_near")) {
+      state.spokenMilestones.add("pb_near");
+      speakCue("還差 3 秒就破個人紀錄！撐住！");
+    } else if (elapsedMs >= state.personalPB && !state.spokenMilestones.has("pb_beat")) {
+      state.spokenMilestones.add("pb_beat");
+      speakCue("太強了！個人新紀錄達成！");
+    }
+  }
+}
+
 function updateOvertakeBar(elapsedMs) {
-  const pbList = buildPBLeaderboard(state.records);
+  const pbList = buildPBLeaderboard(state.records, "time");
   if (pbList.length === 0) {
     el.overtakeText.textContent = "你是首位挑戰者，全力撐住寫下第一筆紀錄！";
     el.overtakeFill.style.width = "100%";
     return;
   }
-  // 找出目前還沒超越的最低門檻選手（由後往前）
   let target = null;
   let targetRank = pbList.length;
   for (let i = pbList.length - 1; i >= 0; i--) {
@@ -919,6 +1129,10 @@ function startChallenge() {
     return;
   }
   localStorage.setItem(LS_KEYS.PLAYER_NAME, name);
+  if (el.playerWeightInput.value) localStorage.setItem(LS_KEYS.PLAYER_WEIGHT, el.playerWeightInput.value);
+  localStorage.setItem(LS_KEYS.PLAYER_GENDER, el.playerGenderSelect.value);
+
+  state.spokenMilestones = new Set();
   ensureAudio();
   if (state.bgmEnabled && !state.bgmPlaying) {
     startBgm();
@@ -935,12 +1149,14 @@ function startChallenge() {
   let left = countdownSec;
   el.countdownNumber.textContent = left;
   playTick();
+  speakCue(`準備上槓，${left}`);
 
   state.countdownTimerId = setInterval(() => {
     left -= 1;
     if (left > 0) {
       el.countdownNumber.textContent = left;
       playTick();
+      if (left <= 3) speakCue(String(left));
     } else {
       clearInterval(state.countdownTimerId);
       state.countdownTimerId = null;
@@ -960,6 +1176,7 @@ function cancelCountdown() {
 
 function beginHangTimer() {
   playGo();
+  speakCue("開始！");
   setStageState("hanging");
   state.hangStartPerf = performance.now();
 
@@ -970,6 +1187,8 @@ function beginHangTimer() {
     el.timerDisplay.innerHTML = `${fmt.main}<span class="ms">${fmt.ms}</span>`;
     applyTier(elapsed, false);
     updateOvertakeBar(elapsed);
+    updateGhostBar(elapsed);
+    checkVoiceMilestones(elapsed);
     state.rafId = requestAnimationFrame(loop);
   };
   state.rafId = requestAnimationFrame(loop);
@@ -995,12 +1214,17 @@ async function saveAndCelebrate(playerName, durationMs, gripType, isManual) {
     .reduce((max, r) => Math.max(max, r.duration_ms), 0);
 
   const isNewPB = durationMs > prevPB;
+  const weightVal = Number(el.playerWeightInput.value);
+  const weightKg = weightVal >= 25 && weightVal <= 250 ? weightVal : null;
+  const genderVal = el.playerGenderSelect.value || "unspecified";
 
   try {
     await insertRecord({
       player_name: playerName.trim(),
       duration_ms: durationMs,
       grip_type: gripType,
+      weight_kg: weightKg,
+      gender: genderVal,
       client_id: state.clientId,
       is_manual: isManual
     });
@@ -1009,20 +1233,27 @@ async function saveAndCelebrate(playerName, durationMs, gripType, isManual) {
     return;
   }
 
-  const pbList = buildPBLeaderboard(state.records);
+  const pbList = buildPBLeaderboard(state.records, "time");
   const rankIdx = pbList.findIndex(
     (r) => r.player_name.trim().toLowerCase() === playerName.trim().toLowerCase()
   );
+  const rankTier = getArcadeRank(durationMs).title;
+  const fmtFull = formatDuration(durationMs).full;
 
   playFinish(isNewPB);
   spawnConfetti(isNewPB ? 120 : 55);
+  speakCue(isNewPB ? `恭喜突破個人紀錄！${(durationMs / 1000).toFixed(1)} 秒！` : `挑戰完成，${(durationMs / 1000).toFixed(1)} 秒！`);
 
   el.resultBadge.textContent = isNewPB ? "🔥 NEW PERSONAL BEST!" : "CHALLENGE COMPLETE";
   el.resultTitle.textContent = isNewPB ? "個人紀錄突破！" : "挑戰完成！";
-  el.resultTime.textContent = formatDuration(durationMs).full;
-  el.resultMeta.textContent = `${playerName} · ${GRIP_LABELS[gripType] || gripType}`;
+  el.resultTime.textContent = fmtFull;
+  el.resultTierPill.textContent = rankTier;
+  el.resultMeta.textContent = `${playerName} · ${GRIP_LABELS[gripType] || gripType}${weightKg ? ` · ${weightKg}kg` : ""}`;
   el.resultRankBanner.textContent =
     rankIdx >= 0 ? `🏆 目前總排名第 ${rankIdx + 1} 名！` : "已記錄至挑戰歷史！";
+
+  state.lastChallengeText = `🔥【IRON BAR ARENA 單槓持久戰】\n我在單槓撐了 ${fmtFull}！\n解鎖段位：${rankTier}${rankIdx >= 0 ? `\n目前總排名：第 ${rankIdx + 1} 名` : ""}\n敢來挑戰我的紀錄嗎？👇\n${window.location.href}`;
+
   el.resultModal.hidden = false;
 }
 
@@ -1049,6 +1280,15 @@ el.bgmToggleBtn.addEventListener("click", () => {
   }
 });
 
+el.voiceToggleBtn.addEventListener("click", () => {
+  state.voiceEnabled = !state.voiceEnabled;
+  localStorage.setItem(LS_KEYS.VOICE, String(state.voiceEnabled));
+  el.voiceIcon.textContent = state.voiceEnabled ? "🗣️" : "🔇";
+  el.voiceLabel.textContent = state.voiceEnabled ? "語音播報開" : "語音關閉";
+  el.voiceToggleBtn.setAttribute("aria-pressed", String(state.voiceEnabled));
+  if (state.voiceEnabled) speakCue("語音播報已開啟！");
+});
+
 el.soundToggleBtn.addEventListener("click", () => {
   state.soundEnabled = !state.soundEnabled;
   localStorage.setItem(LS_KEYS.SOUND, String(state.soundEnabled));
@@ -1071,11 +1311,29 @@ el.quickPlayers.addEventListener("click", (e) => {
   el.playerNameInput.value = chip.dataset.name;
   localStorage.setItem(LS_KEYS.PLAYER_NAME, chip.dataset.name);
   renderQuickPlayers();
+  renderPersonalStats();
   renderLeaderboardList();
 });
 
 el.playerNameInput.addEventListener("input", () => {
   renderQuickPlayers();
+  renderPersonalStats();
+  renderLeaderboardList();
+});
+
+el.modeTimeBtn.addEventListener("click", () => {
+  state.scoreMode = "time";
+  el.modeTimeBtn.classList.add("active");
+  el.modeRelativeBtn.classList.remove("active");
+  renderPodium();
+  renderLeaderboardList();
+});
+
+el.modeRelativeBtn.addEventListener("click", () => {
+  state.scoreMode = "relative";
+  el.modeRelativeBtn.classList.add("active");
+  el.modeTimeBtn.classList.remove("active");
+  renderPodium();
   renderLeaderboardList();
 });
 
@@ -1117,6 +1375,15 @@ el.refreshBtn.addEventListener("click", () => {
 });
 
 // 完賽彈窗
+el.resultShareBtn.addEventListener("click", async () => {
+  if (!state.lastChallengeText) return;
+  try {
+    await navigator.clipboard.writeText(state.lastChallengeText);
+    showToast("✅ 已複製挑釁戰書！快貼到 LINE / IG 約戰！");
+  } catch {
+    prompt("請手動複製下方戰書：", state.lastChallengeText);
+  }
+});
 el.resultCloseBtn.addEventListener("click", () => {
   el.resultModal.hidden = true;
 });
@@ -1179,10 +1446,20 @@ el.cloudResetBtn.addEventListener("click", async () => {
 (function bootstrap() {
   const savedName = localStorage.getItem(LS_KEYS.PLAYER_NAME);
   if (savedName) el.playerNameInput.value = savedName;
+  const savedWeight = localStorage.getItem(LS_KEYS.PLAYER_WEIGHT);
+  if (savedWeight) el.playerWeightInput.value = savedWeight;
+  const savedGender = localStorage.getItem(LS_KEYS.PLAYER_GENDER);
+  if (savedGender) el.playerGenderSelect.value = savedGender;
+
   if (!state.soundEnabled) {
     el.soundIcon.textContent = "🔇";
     el.soundLabel.textContent = "靜音中";
     el.soundToggleBtn.setAttribute("aria-pressed", "false");
+  }
+  if (!state.voiceEnabled) {
+    el.voiceIcon.textContent = "🔇";
+    el.voiceLabel.textContent = "語音關閉";
+    el.voiceToggleBtn.setAttribute("aria-pressed", "false");
   }
   updateBgmUI();
   initBackend();

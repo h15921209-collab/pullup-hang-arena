@@ -1295,3 +1295,282 @@ body.combat-mode #main-action-btn {
   border-radius: 22px;
 }
 
+/* ============================================================
+   3.0 嘉年華 100 秒奪金夜市模式 (CARNIVAL BOUNTY EDITION)
+   ============================================================ */
+
+/* 頂部主模式切換膠囊開關 */
+.master-mode-switch {
+  display: flex;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+.master-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-hud);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.22s ease;
+}
+.master-mode-pill:hover {
+  color: #fff;
+}
+.master-mode-pill.active {
+  background: linear-gradient(135deg, rgba(0, 245, 255, 0.22), rgba(59, 130, 246, 0.3));
+  color: #fff;
+  border: 1px solid rgba(0, 245, 255, 0.5);
+  box-shadow: 0 0 16px rgba(0, 245, 255, 0.28);
+}
+.master-mode-pill .pill-badge {
+  font-size: 9px;
+  background: #f59e0b;
+  color: #000;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+/* 嘉年華夜市專屬主題風格 (body.carnival-theme) */
+body.carnival-theme {
+  background: radial-gradient(circle at 50% 0%, #2a1b05 0%, #0d0802 55%, #050301 100%);
+  --accent-primary: #fbbf24;
+  --accent-secondary: #f97316;
+  --border-neon: rgba(251, 191, 36, 0.35);
+}
+body.carnival-theme .master-mode-pill.active {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.28), rgba(249, 115, 22, 0.35));
+  border-color: #fbbf24;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.45);
+}
+body.carnival-theme .brand-title span {
+  color: #fbbf24;
+  text-shadow: 0 0 18px #fbbf24, 0 0 32px #f97316;
+}
+body.carnival-theme .hud-header {
+  border-color: rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 35px rgba(251, 191, 36, 0.12);
+}
+body.carnival-theme .bar-stage {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: radial-gradient(circle at 50% 25%, rgba(65, 38, 5, 0.92), #080501 85%);
+  box-shadow: inset 0 0 65px rgba(0, 0, 0, 0.9), 0 0 25px rgba(251, 191, 36, 0.15);
+}
+body.carnival-theme .real-bar-steel {
+  background: linear-gradient(90deg, #451a03, #d97706 25%, #fef3c7 50%, #d97706 75%, #451a03);
+}
+body.carnival-theme .real-bar-core {
+  background: #fbbf24;
+  box-shadow: 0 0 16px #fbbf24, 0 0 32px #f59e0b;
+}
+
+/* 嘉年華 100 秒獎金池橫幅 (Jackpot Banner) */
+.carnival-jackpot-banner {
+  position: relative;
+  background: linear-gradient(135deg, rgba(40, 22, 4, 0.95), rgba(15, 9, 2, 0.98));
+  border: 1.5px solid #fbbf24;
+  border-radius: 18px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.25), inset 0 0 20px rgba(251, 191, 36, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.carnival-jackpot-banner[hidden] {
+  display: none !important;
+}
+.jackpot-top-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #fde68a;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+.jackpot-fire-icon {
+  animation: flameBounce 0.7s infinite alternate ease-in-out;
+}
+@keyframes flameBounce {
+  from { transform: scale(1); }
+  to { transform: scale(1.3); }
+}
+
+.jackpot-main-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.jackpot-label {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: #f59e0b;
+}
+.jackpot-val {
+  font-family: var(--font-display);
+  font-size: clamp(34px, 6vw, 44px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 18px #fbbf24, 0 0 35px #f97316;
+  letter-spacing: 0.04em;
+}
+
+.jackpot-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(251, 191, 36, 0.2);
+  padding-top: 8px;
+}
+.jackpot-bet-text {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+.jackpot-btns {
+  display: flex;
+  gap: 6px;
+}
+.jackpot-mini-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fef08a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.jackpot-mini-btn:hover {
+  background: rgba(251, 191, 36, 0.25);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+/* 100 秒奪金專屬進度條 */
+.carnival-target-box {
+  grid-column: 1 / -1;
+  background: rgba(30, 18, 4, 0.88);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.carnival-target-box[hidden] {
+  display: none !important;
+}
+.carnival-track-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.carnival-target-remain {
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: #f59e0b;
+}
+.carnival-track {
+  height: 9px;
+  background: rgba(45, 26, 6, 0.95);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.carnival-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24, #f97316);
+  box-shadow: 0 0 14px #fbbf24;
+}
+
+/* 90秒+ 最後衝刺心跳與警報狂閃 (siren-panic) */
+.bar-stage.siren-panic {
+  animation: sirenPulse 0.45s infinite alternate ease-in-out;
+}
+@keyframes sirenPulse {
+  0% {
+    border-color: #ef4444;
+    box-shadow: 0 0 35px rgba(239, 68, 68, 0.6), inset 0 0 45px rgba(239, 68, 68, 0.4);
+  }
+  100% {
+    border-color: #fbbf24;
+    box-shadow: 0 0 45px rgba(251, 191, 36, 0.8), inset 0 0 55px rgba(251, 191, 36, 0.5);
+  }
+}
+
+/* 完賽嘉年華專屬結算卡 */
+.carnival-result-box {
+  margin: 10px 0 14px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(30, 18, 5, 0.92);
+  border: 1.5px solid #fbbf24;
+  text-align: center;
+}
+.carnival-result-box[hidden] {
+  display: none !important;
+}
+.carnival-result-tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 3px 12px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+  letter-spacing: 0.1em;
+}
+.carnival-result-box.is-win {
+  border-color: #34d399;
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.7), rgba(15, 23, 42, 0.9));
+  box-shadow: 0 0 30px rgba(52, 211, 153, 0.35);
+}
+.carnival-result-box.is-win .carnival-result-tag {
+  background: #10b981;
+  color: #022c22;
+}
+.carnival-result-box.is-lose {
+  border-color: #f87171;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.6), rgba(15, 23, 42, 0.9));
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.3);
+}
+.carnival-result-box.is-lose .carnival-result-tag {
+  background: #ef4444;
+  color: #fff;
+}
+.carnival-result-headline {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  margin: 4px 0;
+}
+.carnival-result-sub {
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+/* 篩選按鈕高亮樣式 */
+.filter-pill-gold.active {
+  border-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fef08a;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.3);
+}
+.filter-pill-agony.active {
+  border-color: #f87171;
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+}
+
+

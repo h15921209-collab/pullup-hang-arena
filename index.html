@@ -18,9 +18,22 @@
     <!-- 頂部電競 HUD 導覽列 -->
     <header class="hud-header">
       <div class="brand">
-        <div class="brand-badge">ARCADE EDITION</div>
+        <div class="brand-badge">ARCADE EDITION 3.0</div>
         <h1 class="brand-title">IRON BAR <span>ARENA</span></h1>
-        <p class="brand-sub">單槓持久度極限競賽排行榜</p>
+        <p class="brand-sub">單槓持久度極限競賽 · 夜市嘉年華奪金版</p>
+      </div>
+
+      <!-- 模式總切換開關 -->
+      <div class="master-mode-switch" role="tablist" aria-label="競賽模式切換">
+        <button id="mode-btn-endurance" class="master-mode-pill active" type="button" role="tab" aria-selected="true">
+          <span class="pill-icon">🏆</span>
+          <span class="pill-text">無限持久排位賽</span>
+        </button>
+        <button id="mode-btn-carnival" class="master-mode-pill" type="button" role="tab" aria-selected="false">
+          <span class="pill-icon">🎪</span>
+          <span class="pill-text">100秒奪金嘉年華</span>
+          <span class="pill-badge">JACKPOT</span>
+        </button>
       </div>
 
       <div class="hud-actions">
@@ -46,6 +59,25 @@
     <main class="arena-grid">
       <!-- 左側／主舞台：吊單槓動畫 + 數位計時器 + 操控面板 -->
       <section class="arena-card stage-card">
+        <!-- 嘉年華 100 秒奪金獎金池橫幅 (嘉年華模式顯示) -->
+        <div id="carnival-jackpot-banner" class="carnival-jackpot-banner" hidden>
+          <div class="jackpot-top-label">
+            <span class="jackpot-fire-icon">🔥</span>
+            <span>夜市高額懸賞 · 撐滿 100 秒獨吞全場彩金！</span>
+          </div>
+          <div class="jackpot-main-row">
+            <span class="jackpot-label">JACKPOT BOUNTY</span>
+            <span id="jackpot-val" class="jackpot-val">$600</span>
+          </div>
+          <div class="jackpot-action-bar">
+            <span id="jackpot-bet-text" class="jackpot-bet-text">單次挑戰注金：$50</span>
+            <div class="jackpot-btns">
+              <button id="jackpot-cfg-btn" class="jackpot-mini-btn" type="button">⚙️ 設定注金</button>
+              <button id="jackpot-reset-btn" class="jackpot-mini-btn" type="button">🔄 重設新賽局</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 能量等級與即時超車進度條 -->
         <div class="stage-top-bar">
           <div id="tier-badge" class="tier-badge">
@@ -98,6 +130,15 @@
               <span id="ghost-text">👻 Ghost 對戰：尚無個人紀錄</span>
               <div class="overtake-track">
                 <div id="ghost-fill" class="overtake-fill ghost-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div id="carnival-target-box" class="overtake-box carnival-target-box" hidden>
+              <div class="carnival-track-head">
+                <span id="carnival-target-text">🎯 100秒夜市奪金目標：撐住！</span>
+                <span id="carnival-target-remain" class="carnival-target-remain">剩 100.0s</span>
+              </div>
+              <div class="overtake-track carnival-track">
+                <div id="carnival-target-fill" class="overtake-fill carnival-fill" style="width: 0%"></div>
               </div>
             </div>
           </div>
@@ -214,6 +255,8 @@
             </div>
             <div class="filter-pills">
               <button class="filter-pill active" data-filter="all" type="button">全部</button>
+              <button class="filter-pill filter-pill-gold" data-filter="carnival_win" type="button">👑 奪金榜 (100s+)</button>
+              <button class="filter-pill filter-pill-agony" data-filter="carnival_agony" type="button">💔 殘念榜 (90~99.9s)</button>
               <button class="filter-pill" data-filter="overhand" type="button">正手</button>
               <button class="filter-pill" data-filter="underhand" type="button">反手</button>
               <button class="filter-pill" data-filter="mixed" type="button">混合</button>
@@ -236,6 +279,14 @@
       <h2 id="result-title" class="result-title">挑戰成功！</h2>
       <div id="result-time" class="result-time">00:45.23</div>
       <div id="result-tier-pill" class="result-tier-pill">🦍 猿猴戰士</div>
+      
+      <!-- 嘉年華 100 秒結算專屬區塊 (心碎殘念度 vs 爆金幣狂賀) -->
+      <div id="carnival-result-box" class="carnival-result-box" hidden>
+        <div id="carnival-result-tag" class="carnival-result-tag">💔 殘念心碎</div>
+        <div id="carnival-result-headline" class="carnival-result-headline">只差 2.4 秒抱走 $600！</div>
+        <p id="carnival-result-sub" class="carnival-result-sub">心碎指數 97.6% · 注金 $50 已累加至獎金池！</p>
+      </div>
+
       <p id="result-meta" class="result-meta">阿勝 · 正手 Overhand</p>
       <div id="result-rank-banner" class="result-rank-banner">目前總排名第 2 名！</div>
       <button id="result-share-btn" class="btn-share-card" type="button">📋 一鍵複製挑釁戰書（傳 LINE / IG）</button>
@@ -243,6 +294,30 @@
         <button id="result-retry-btn" class="btn-arcade btn-start" type="button">⚡ 再戰一場</button>
         <button id="result-close-btn" class="btn-secondary" type="button">查看排行榜</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 嘉年華彩池設定彈窗 -->
+  <div id="jackpot-modal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>🎪 嘉年華 100 秒奪金賽局設定</h3>
+        <button id="jackpot-close-x" class="close-x" type="button" aria-label="關閉">✕</button>
+      </div>
+      <form id="jackpot-form" class="manual-form">
+        <div class="field-group">
+          <label for="cfg-jackpot-pool">目前累積獎金池 (元 / 點)</label>
+          <input id="cfg-jackpot-pool" type="number" min="0" step="50" value="600" required />
+        </div>
+        <div class="field-group">
+          <label for="cfg-jackpot-bet">單次挑戰入場注金 (失敗時滾入獎金池)</label>
+          <input id="cfg-jackpot-bet" type="number" min="0" step="10" value="50" required />
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn-arcade btn-start">💾 儲存設定</button>
+          <button type="button" id="cfg-jackpot-reset-pool-btn" class="btn-secondary">🔄 清空為起始彩池</button>
+        </div>
+      </form>
     </div>
   </div>
 

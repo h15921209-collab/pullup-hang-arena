@@ -31,6 +31,9 @@ const LS_KEYS = {
   SOUND: "iron_bar_sound_on",
   BGM: "iron_bar_bgm_on",
   VOICE: "iron_bar_voice_on",
+  GAME_MODE: "iron_bar_game_mode_v1",
+  JACKPOT_POOL: "iron_bar_jackpot_pool_v1",
+  JACKPOT_BET: "iron_bar_jackpot_bet_v1",
   CLOUD_OVERRIDE: "iron_bar_cloud_override"
 };
 
@@ -43,6 +46,9 @@ const state = {
   grip: "overhand",
   activeTab: "pb", // pb | history
   scoreMode: "time", // time | relative
+  gameMode: localStorage.getItem(LS_KEYS.GAME_MODE) || "endurance", // endurance | carnival
+  jackpotPool: Number(localStorage.getItem(LS_KEYS.JACKPOT_POOL)) || 600,
+  jackpotBet: Number(localStorage.getItem(LS_KEYS.JACKPOT_BET)) || 50,
   gripFilter: "all",
   soundEnabled: localStorage.getItem(LS_KEYS.SOUND) !== "false",
   bgmEnabled: localStorage.getItem(LS_KEYS.BGM) !== "false",
@@ -61,11 +67,15 @@ const state = {
   wakeLock: null,
   personalPB: 0,
   spokenMilestones: new Set(),
-  lastChallengeText: ""
+  lastChallengeText: "",
+  lastHeartbeatSecond: -1
 };
 
 // DOM 快取
 const el = {
+  modeBtnEndurance: document.getElementById("mode-btn-endurance"),
+  modeBtnCarnival: document.getElementById("mode-btn-carnival"),
+
   syncStatusBtn: document.getElementById("sync-status-btn"),
   syncStatusText: document.getElementById("sync-status-text"),
   bgmToggleBtn: document.getElementById("bgm-toggle-btn"),
@@ -78,6 +88,12 @@ const el = {
   soundIcon: document.getElementById("sound-icon"),
   soundLabel: document.getElementById("sound-label"),
 
+  carnivalJackpotBanner: document.getElementById("carnival-jackpot-banner"),
+  jackpotVal: document.getElementById("jackpot-val"),
+  jackpotBetText: document.getElementById("jackpot-bet-text"),
+  jackpotCfgBtn: document.getElementById("jackpot-cfg-btn"),
+  jackpotResetBtn: document.getElementById("jackpot-reset-btn"),
+
   barStage: document.getElementById("bar-stage"),
   tierName: document.getElementById("tier-name"),
   wakeBadge: document.getElementById("wake-badge"),
@@ -88,6 +104,11 @@ const el = {
   overtakeFill: document.getElementById("overtake-fill"),
   ghostText: document.getElementById("ghost-text"),
   ghostFill: document.getElementById("ghost-fill"),
+
+  carnivalTargetBox: document.getElementById("carnival-target-box"),
+  carnivalTargetText: document.getElementById("carnival-target-text"),
+  carnivalTargetRemain: document.getElementById("carnival-target-remain"),
+  carnivalTargetFill: document.getElementById("carnival-target-fill"),
 
   playerNameInput: document.getElementById("player-name-input"),
   countdownSelect: document.getElementById("countdown-select"),
@@ -120,6 +141,10 @@ const el = {
   resultTitle: document.getElementById("result-title"),
   resultTime: document.getElementById("result-time"),
   resultTierPill: document.getElementById("result-tier-pill"),
+  carnivalResultBox: document.getElementById("carnival-result-box"),
+  carnivalResultTag: document.getElementById("carnival-result-tag"),
+  carnivalResultHeadline: document.getElementById("carnival-result-headline"),
+  carnivalResultSub: document.getElementById("carnival-result-sub"),
   resultMeta: document.getElementById("result-meta"),
   resultRankBanner: document.getElementById("result-rank-banner"),
   resultShareBtn: document.getElementById("result-share-btn"),
@@ -135,6 +160,13 @@ const el = {
   manualGrip: document.getElementById("manual-grip"),
   manualCloseX: document.getElementById("manual-close-x"),
   manualCancelBtn: document.getElementById("manual-cancel-btn"),
+
+  jackpotModal: document.getElementById("jackpot-modal"),
+  jackpotCloseX: document.getElementById("jackpot-close-x"),
+  jackpotForm: document.getElementById("jackpot-form"),
+  cfgJackpotPool: document.getElementById("cfg-jackpot-pool"),
+  cfgJackpotBet: document.getElementById("cfg-jackpot-bet"),
+  cfgJackpotResetPoolBtn: document.getElementById("cfg-jackpot-reset-pool-btn"),
 
   cloudModal: document.getElementById("cloud-modal"),
   cloudCloseX: document.getElementById("cloud-close-x"),
@@ -300,6 +332,65 @@ function playFinish(isNewPB) {
     playTone(523.25, 0.15, "sine", 0.15, 0);
     playTone(659.25, 0.24, "sine", 0.16, 0.12);
   }
+}
+
+// 嘉年華 90s+ 重低音心跳與緊迫秒針
+function playHeartbeat() {
+  const ctx = ensureAudio();
+  if (!ctx || !state.soundEnabled) return;
+  const t = ctx.currentTime;
+  // lub
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = "sine";
+  osc1.frequency.setValueAtTime(55, t);
+  osc1.frequency.exponentialRampToValueAtTime(32, t + 0.1);
+  gain1.gain.setValueAtTime(0.35, t);
+  gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc1.start(t);
+  osc1.stop(t + 0.13);
+
+  // dub
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = "sine";
+  osc2.frequency.setValueAtTime(46, t + 0.14);
+  osc2.frequency.exponentialRampToValueAtTime(28, t + 0.25);
+  gain2.gain.setValueAtTime(0.32, t + 0.14);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.27);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  osc2.start(t + 0.14);
+  osc2.stop(t + 0.28);
+}
+
+function playTickingClock() {
+  playTone(1800, 0.02, "sine", 0.12);
+}
+
+// 嘉年華破 100 秒大獎狂歡音效 (Jackpot Win Fanfare)
+function playJackpotWinSound() {
+  const ctx = ensureAudio();
+  if (!ctx || !state.soundEnabled) return;
+  const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98, 2093.0];
+  notes.forEach((freq, idx) => {
+    playTone(freq, 0.18, "sawtooth", 0.18, idx * 0.09);
+    playTone(freq * 1.5, 0.12, "triangle", 0.12, idx * 0.09 + 0.04);
+  });
+  setTimeout(() => {
+    playTone(1046.5, 0.6, "square", 0.25, 0);
+    playTone(2093.0, 0.8, "sawtooth", 0.22, 0.05);
+  }, 700);
+}
+
+// 嘉年華功虧一簣摔落音效 (Sad Trombone)
+function playCarnivalFailSound() {
+  const tones = [466.16, 440.0, 415.3, 392.0];
+  tones.forEach((freq, idx) => {
+    playTone(freq, 0.32, "sawtooth", 0.18, idx * 0.26);
+  });
 }
 
 // 138 BPM 熱血節拍合成器 (E 小調進行：E - C - G - D)
@@ -509,7 +600,31 @@ function spawnConfetti(count = 90) {
       color: colors[Math.floor(Math.random() * colors.length)],
       life: 1,
       rot: Math.random() * Math.PI,
-      vRot: (Math.random() - 0.5) * 0.22
+      vRot: (Math.random() - 0.5) * 0.22,
+      isCoin: false
+    });
+  }
+}
+
+// 嘉年華 100 秒奪金大獎：金色金幣噴發
+function spawnGoldCoins(count = 130) {
+  const goldColors = ["#fbbf24", "#f59e0b", "#d97706", "#fde68a", "#fffbeb"];
+  const originX = fxCanvas.width / 2;
+  const originY = fxCanvas.height * 0.4;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 12 + 4;
+    confettiPieces.push({
+      x: originX,
+      y: originY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 5,
+      size: Math.random() * 10 + 6,
+      color: goldColors[Math.floor(Math.random() * goldColors.length)],
+      life: 1,
+      rot: Math.random() * Math.PI,
+      vRot: (Math.random() - 0.5) * 0.35,
+      isCoin: true
     });
   }
 }
@@ -543,7 +658,16 @@ function animateCanvases() {
       fxCtx.rotate(p.rot);
       fxCtx.globalAlpha = p.life;
       fxCtx.fillStyle = p.color;
-      fxCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      if (p.isCoin) {
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.lineWidth = 1.2;
+        fxCtx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        fxCtx.stroke();
+      } else {
+        fxCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      }
       fxCtx.restore();
     }
   } else {
@@ -744,6 +868,12 @@ async function deleteRecord(id) {
 // 排行榜計算與渲染
 // ============================================================
 function getFilteredRecords() {
+  if (state.gripFilter === "carnival_win") {
+    return state.records.filter((r) => r.duration_ms >= 100000);
+  }
+  if (state.gripFilter === "carnival_agony") {
+    return state.records.filter((r) => r.duration_ms >= 90000 && r.duration_ms < 100000);
+  }
   if (state.gripFilter === "all") return state.records;
   return state.records.filter((r) => r.grip_type === state.gripFilter);
 }
@@ -925,6 +1055,12 @@ function renderLeaderboardList() {
         const topCls = rank <= 3 ? `top-${rank}` : "";
         const isMe = currentPlayer && item.player_name.trim().toLowerCase() === currentPlayer;
         const tierTitle = getArcadeRank(item.duration_ms).title;
+        let carnivalBadge = "";
+        if (item.duration_ms >= 100000) {
+          carnivalBadge = `<span class="rank-tier-tag" style="border-color:#fbbf24;color:#fde68a;background:rgba(251,191,36,0.18)">👑 100s+ 奪金傳奇</span>`;
+        } else if (item.duration_ms >= 90000) {
+          carnivalBadge = `<span class="rank-tier-tag" style="border-color:#f87171;color:#fca5a5;background:rgba(239,68,68,0.18)">💔 殘念 ${(100 - item.duration_ms / 1000).toFixed(1)}s</span>`;
+        }
         const rightScore =
           state.scoreMode === "relative"
             ? `${calcRelativeScore(item).toFixed(1)} <small style="font-size:11px;color:#94a3b8">(${formatDuration(item.duration_ms).full})</small>`
@@ -934,7 +1070,7 @@ function renderLeaderboardList() {
             <div class="rank-left">
               <div class="rank-num ${topCls}">#${rank}</div>
               <div class="rank-info">
-                <div class="rank-name">${escapeHtml(item.player_name)}<span class="rank-tier-tag">${tierTitle}</span></div>
+                <div class="rank-name">${escapeHtml(item.player_name)}<span class="rank-tier-tag">${tierTitle}</span>${carnivalBadge}</div>
                 <div class="rank-meta">
                   <span>${GRIP_LABELS[item.grip_type] || item.grip_type}</span>
                   ${item.weight_kg ? `<span>${item.weight_kg}kg</span>` : ""}
@@ -1000,9 +1136,10 @@ async function releaseWakeLock() {
 
 function setStageState(phase) {
   state.phase = phase;
-  el.barStage.classList.remove("state-idle", "state-countdown", "state-hanging");
+  el.barStage.classList.remove("state-idle", "state-countdown", "state-hanging", "siren-panic");
   el.barStage.classList.add(`state-${phase}`);
   document.body.classList.toggle("combat-mode", phase !== "idle");
+  state.lastHeartbeatSecond = -1;
 
   el.mainActionBtn.classList.remove("btn-start", "btn-stop", "btn-cancel");
   if (phase === "idle") {
@@ -1063,8 +1200,69 @@ function updateGhostBar(elapsedMs) {
   }
 }
 
+function updateJackpotUI() {
+  el.jackpotVal.textContent = `$${state.jackpotPool}`;
+  el.jackpotBetText.textContent = `單次挑戰注金：$${state.jackpotBet}`;
+}
+
+function setGameMode(mode) {
+  state.gameMode = mode;
+  localStorage.setItem(LS_KEYS.GAME_MODE, mode);
+
+  const isCarnival = mode === "carnival";
+  el.modeBtnEndurance.classList.toggle("active", !isCarnival);
+  el.modeBtnEndurance.setAttribute("aria-selected", String(!isCarnival));
+  el.modeBtnCarnival.classList.toggle("active", isCarnival);
+  el.modeBtnCarnival.setAttribute("aria-selected", String(isCarnival));
+
+  document.body.classList.toggle("carnival-theme", isCarnival);
+  el.carnivalJackpotBanner.hidden = !isCarnival;
+  el.carnivalTargetBox.hidden = !isCarnival;
+
+  updateJackpotUI();
+  if (isCarnival) {
+    showToast("🎪 已切換至「100秒奪金嘉年華」夜市挑戰模式！");
+  } else {
+    showToast("🏆 已切換至「無限持久排位賽」模式！");
+  }
+}
+
 function checkVoiceMilestones(elapsedMs) {
   const sec = Math.floor(elapsedMs / 1000);
+
+  if (state.gameMode === "carnival") {
+    if (sec >= 50 && !state.spokenMilestones.has("c_50s")) {
+      state.spokenMilestones.add("c_50s");
+      speakCue("撐過一半了！50 秒！獎金向你招手！");
+    } else if (sec >= 80 && !state.spokenMilestones.has("c_80s")) {
+      state.spokenMilestones.add("c_80s");
+      speakCue("最後 20 秒衝刺！咬緊牙關！");
+    } else if (sec >= 90 && !state.spokenMilestones.has("c_90s")) {
+      state.spokenMilestones.add("c_90s");
+      speakCue("最後 10 秒！心跳狂飆！撐住！");
+    } else if (sec >= 95 && !state.spokenMilestones.has("c_95s")) {
+      state.spokenMilestones.add("c_95s");
+      speakCue("5！");
+    } else if (sec >= 96 && !state.spokenMilestones.has("c_96s")) {
+      state.spokenMilestones.add("c_96s");
+      speakCue("4！");
+    } else if (sec >= 97 && !state.spokenMilestones.has("c_97s")) {
+      state.spokenMilestones.add("c_97s");
+      speakCue("3！");
+    } else if (sec >= 98 && !state.spokenMilestones.has("c_98s")) {
+      state.spokenMilestones.add("c_98s");
+      speakCue("2！");
+    } else if (sec >= 99 && !state.spokenMilestones.has("c_99s")) {
+      state.spokenMilestones.add("c_99s");
+      speakCue("1！");
+    } else if (sec >= 100 && !state.spokenMilestones.has("c_100s")) {
+      state.spokenMilestones.add("c_100s");
+      speakCue("太神了！突破 100 秒！大獲全勝！");
+    }
+    return;
+  }
+
+  // 無限持久模式語音里程碑
   if (sec >= 15 && !state.spokenMilestones.has("15s")) {
     state.spokenMilestones.add("15s");
     speakCue("撐住！已經 15 秒了！");
@@ -1179,6 +1377,7 @@ function beginHangTimer() {
   speakCue("開始！");
   setStageState("hanging");
   state.hangStartPerf = performance.now();
+  state.lastHeartbeatSecond = -1;
 
   const loop = () => {
     if (state.phase !== "hanging") return;
@@ -1188,6 +1387,35 @@ function beginHangTimer() {
     applyTier(elapsed, false);
     updateOvertakeBar(elapsed);
     updateGhostBar(elapsed);
+
+    // 嘉年華 100 秒專屬進度與 90s+ 緊迫心跳/警報
+    if (state.gameMode === "carnival") {
+      if (elapsed < 100000) {
+        const diff = ((100000 - elapsed) / 1000).toFixed(1);
+        const pct = Math.min(100, Math.max(1, (elapsed / 100000) * 100));
+        el.carnivalTargetRemain.textContent = `剩 ${diff}s`;
+        el.carnivalTargetFill.style.width = `${pct}%`;
+
+        // 90s ~ 100s 最後 10 秒心跳與警報狂閃
+        if (elapsed >= 90000) {
+          el.barStage.classList.add("siren-panic");
+          const sec = Math.floor(elapsed / 1000);
+          if (sec !== state.lastHeartbeatSecond) {
+            state.lastHeartbeatSecond = sec;
+            playHeartbeat();
+            playTickingClock();
+          }
+        } else {
+          el.barStage.classList.remove("siren-panic");
+        }
+      } else {
+        const over = ((elapsed - 100000) / 1000).toFixed(1);
+        el.carnivalTargetRemain.textContent = `🔥 奪金 +${over}s`;
+        el.carnivalTargetFill.style.width = "100%";
+        el.barStage.classList.remove("siren-panic");
+      }
+    }
+
     checkVoiceMilestones(elapsed);
     state.rafId = requestAnimationFrame(loop);
   };
@@ -1240,19 +1468,75 @@ async function saveAndCelebrate(playerName, durationMs, gripType, isManual) {
   const rankTier = getArcadeRank(durationMs).title;
   const fmtFull = formatDuration(durationMs).full;
 
-  playFinish(isNewPB);
-  spawnConfetti(isNewPB ? 120 : 55);
-  speakCue(isNewPB ? `恭喜突破個人紀錄！${(durationMs / 1000).toFixed(1)} 秒！` : `挑戰完成，${(durationMs / 1000).toFixed(1)} 秒！`);
+  // 判斷是否為嘉年華模式結算
+  if (state.gameMode === "carnival") {
+    el.carnivalResultBox.hidden = false;
 
-  el.resultBadge.textContent = isNewPB ? "🔥 NEW PERSONAL BEST!" : "CHALLENGE COMPLETE";
-  el.resultTitle.textContent = isNewPB ? "個人紀錄突破！" : "挑戰完成！";
-  el.resultTime.textContent = fmtFull;
-  el.resultTierPill.textContent = rankTier;
+    if (durationMs >= 100000) {
+      // 成功通關 100 秒：獨吞 Jackpot 獎金池！
+      const prizeWon = state.jackpotPool;
+      state.jackpotPool = 200; // 重置為基礎彩金
+      localStorage.setItem(LS_KEYS.JACKPOT_POOL, String(state.jackpotPool));
+      updateJackpotUI();
+
+      el.carnivalResultBox.className = "carnival-result-box is-win";
+      el.carnivalResultTag.textContent = "👑 100秒奪金大師 · 破除魔咒！";
+      el.carnivalResultHeadline.textContent = `🎉 獨吞累積彩金 $${prizeWon}！`;
+      el.carnivalResultSub.textContent = "全場膜拜！成功撐滿 100 秒夜市高難度單槓！";
+
+      el.resultBadge.textContent = "💰 JACKPOT BOUNTY WINNER!";
+      el.resultTitle.textContent = "奪金大獲全勝！";
+      el.resultTime.textContent = fmtFull;
+      el.resultTierPill.textContent = "👑 奪金通關傳奇";
+
+      playJackpotWinSound();
+      spawnGoldCoins(150);
+      speakCue(`太不可思議了！成功突破 100 秒，抱走獎金 ${prizeWon} 元！`);
+
+      state.lastChallengeText = `🔥【IRON BAR ARENA 夜市 100 秒奪金大獲全勝！】\n我在單槓撐了 ${fmtFull}！\n👑 成功破解夜市旋轉單槓魔咒，獨吞全場累積獎金 $${prizeWon}！\n敢來挑戰我的紀錄嗎？👇\n${window.location.href}`;
+    } else {
+      // 未滿 100 秒：計算殘念指數，注金入池
+      const agonyPct = ((durationMs / 100000) * 100).toFixed(1);
+      const diffSec = ((100000 - durationMs) / 1000).toFixed(1);
+      const prevPool = state.jackpotPool;
+      state.jackpotPool += state.jackpotBet;
+      localStorage.setItem(LS_KEYS.JACKPOT_POOL, String(state.jackpotPool));
+      updateJackpotUI();
+
+      el.carnivalResultBox.className = "carnival-result-box is-lose";
+      el.carnivalResultTag.textContent = durationMs >= 90000 ? "💔 殘念心碎之王 (90s+)" : "💔 功虧一簣 · 注金入池";
+      el.carnivalResultHeadline.textContent = `只差 ${diffSec} 秒抱走 $${prevPool}！`;
+      el.carnivalResultSub.textContent = `殘念心碎度 ${agonyPct}% · 入場注金 $${state.jackpotBet} 已滾入彩池（累積至 $${state.jackpotPool}）！`;
+
+      el.resultBadge.textContent = "💔 嘉年華功虧一簣";
+      el.resultTitle.textContent = "飲恨摔落！挑戰失敗";
+      el.resultTime.textContent = fmtFull;
+      el.resultTierPill.textContent = rankTier;
+
+      playCarnivalFailSound();
+      spawnConfetti(45);
+      speakCue(durationMs >= 90000 ? `太殘念了！只差 ${diffSec} 秒就能抱走獎金！` : `挑戰失敗，注金已滾入彩池！`);
+
+      state.lastChallengeText = `💔【IRON BAR ARENA 100秒奪金殘念飲恨】\n我在單槓撐了 ${fmtFull}，心碎度高達 ${agonyPct}%！\n只差 ${diffSec} 秒就能抱走 $${prevPool} 獎金！\n誰能替我報仇破百秒？👇\n${window.location.href}`;
+    }
+  } else {
+    // 經典無限持久排位賽結算
+    el.carnivalResultBox.hidden = true;
+    playFinish(isNewPB);
+    spawnConfetti(isNewPB ? 120 : 55);
+    speakCue(isNewPB ? `恭喜突破個人紀錄！${(durationMs / 1000).toFixed(1)} 秒！` : `挑戰完成，${(durationMs / 1000).toFixed(1)} 秒！`);
+
+    el.resultBadge.textContent = isNewPB ? "🔥 NEW PERSONAL BEST!" : "CHALLENGE COMPLETE";
+    el.resultTitle.textContent = isNewPB ? "個人紀錄突破！" : "挑戰完成！";
+    el.resultTime.textContent = fmtFull;
+    el.resultTierPill.textContent = rankTier;
+
+    state.lastChallengeText = `🔥【IRON BAR ARENA 單槓持久戰】\n我在單槓撐了 ${fmtFull}！\n解鎖段位：${rankTier}${rankIdx >= 0 ? `\n目前總排名：第 ${rankIdx + 1} 名` : ""}\n敢來挑戰我的紀錄嗎？👇\n${window.location.href}`;
+  }
+
   el.resultMeta.textContent = `${playerName} · ${GRIP_LABELS[gripType] || gripType}${weightKg ? ` · ${weightKg}kg` : ""}`;
   el.resultRankBanner.textContent =
     rankIdx >= 0 ? `🏆 目前總排名第 ${rankIdx + 1} 名！` : "已記錄至挑戰歷史！";
-
-  state.lastChallengeText = `🔥【IRON BAR ARENA 單槓持久戰】\n我在單槓撐了 ${fmtFull}！\n解鎖段位：${rankTier}${rankIdx >= 0 ? `\n目前總排名：第 ${rankIdx + 1} 名` : ""}\n敢來挑戰我的紀錄嗎？👇\n${window.location.href}`;
 
   el.resultModal.hidden = false;
 }
@@ -1392,6 +1676,45 @@ el.resultRetryBtn.addEventListener("click", () => {
   startChallenge();
 });
 
+// 模式總切換
+el.modeBtnEndurance.addEventListener("click", () => setGameMode("endurance"));
+el.modeBtnCarnival.addEventListener("click", () => setGameMode("carnival"));
+
+// 嘉年華注金與彩池設定
+el.jackpotCfgBtn.addEventListener("click", () => {
+  el.cfgJackpotPool.value = state.jackpotPool;
+  el.cfgJackpotBet.value = state.jackpotBet;
+  el.jackpotModal.hidden = false;
+});
+el.jackpotCloseX.addEventListener("click", () => (el.jackpotModal.hidden = true));
+el.jackpotForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const pool = Math.max(0, Number(el.cfgJackpotPool.value) || 0);
+  const bet = Math.max(0, Number(el.cfgJackpotBet.value) || 0);
+  state.jackpotPool = pool;
+  state.jackpotBet = bet;
+  localStorage.setItem(LS_KEYS.JACKPOT_POOL, String(pool));
+  localStorage.setItem(LS_KEYS.JACKPOT_BET, String(bet));
+  updateJackpotUI();
+  el.jackpotModal.hidden = true;
+  showToast("💾 嘉年華彩池設定已儲存！");
+});
+el.cfgJackpotResetPoolBtn.addEventListener("click", () => {
+  state.jackpotPool = 600;
+  el.cfgJackpotPool.value = 600;
+  localStorage.setItem(LS_KEYS.JACKPOT_POOL, "600");
+  updateJackpotUI();
+  showToast("🔄 已重設為初始獎金池 $600！");
+});
+el.jackpotResetBtn.addEventListener("click", () => {
+  if (confirm("確定要將今晚累積獎金池重設為 $600 開啟全新賽局嗎？")) {
+    state.jackpotPool = 600;
+    localStorage.setItem(LS_KEYS.JACKPOT_POOL, "600");
+    updateJackpotUI();
+    showToast("🔄 已重設新賽局，彩池為 $600！");
+  }
+});
+
 // 手動補登彈窗
 el.manualOpenBtn.addEventListener("click", () => {
   el.manualPlayer.value = el.playerNameInput.value.trim();
@@ -1462,5 +1785,6 @@ el.cloudResetBtn.addEventListener("click", async () => {
     el.voiceToggleBtn.setAttribute("aria-pressed", "false");
   }
   updateBgmUI();
+  setGameMode(state.gameMode);
   initBackend();
 })();
